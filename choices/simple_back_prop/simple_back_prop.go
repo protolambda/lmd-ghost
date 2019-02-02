@@ -19,7 +19,7 @@ func (gh *SimpleBackPropLMDGhost) SetChain(chain *sim.SimChain) {
 	gh.chain = chain
 }
 
-func (gh *SimpleBackPropLMDGhost) AttestIn(hash256 sim.Hash256) {
+func (gh *SimpleBackPropLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.ValidatorID) {
 	// free, at cost of head-function.
 }
 

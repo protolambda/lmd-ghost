@@ -1,6 +1,8 @@
 package sim
 
-import "math/rand"
+import (
+	"math/rand"
+)
 
 // The effective identifier of a block
 type Hash256 [32]uint8
@@ -22,11 +24,14 @@ type Block struct {
 
 const EPOCH_LENGTH = 64
 const LATENCY_FACTOR = 0.9
+const MAX_SLOT_SKIP = 4
 
 type ForkChoice interface {
 	SetChain(chain *SimChain)
 	BlockIn(block *Block)
-	AttestIn(hash256 Hash256)
+	/// Note: the target attestion in the chain update will be updated with the given hash after calling this.
+	// This enables you to access the previous latest attestation of the validator
+	AttestIn(blockHash Hash256, attester ValidatorID)
 	HeadFn() Hash256
 }
 
@@ -127,8 +132,10 @@ func (ch *SimChain) HandleProposedBlock(blockHash Hash256, parentHash Hash256, p
 }
 
 func (ch *SimChain) SimNewBlock() {
-	// TODO random slot within range justified_slot <->  justified_slot + (latest_slot - justified_slot) * [-0.9, 2.0]
-	slot := uint64(1)
+	// random parent block, derived from the current head, but perturbed; latency may introduce a fork in the chain
+	parentBlock := ch.getRandomTarget()
+
+	slot := parentBlock.Slot + uint32(ch.RNG.Intn(MAX_SLOT_SKIP) + 1)
 
 	// In spec: get the first committee for the slot being proposed, and select member within based on slot. Committees are shuffled each epoch.
 	//
@@ -136,11 +143,9 @@ func (ch *SimChain) SimNewBlock() {
 	// How: select a random subset of the validators, size EPOCH_LENGTH, with and pick a validator based on the current slot.
 	// This guarantees that a validator cannot propose twice within the same epoch.
 	// And modify the slot, with an offset based on the epoch, to make every epoch a little different. Not secure, but sufficient for simulation (I think).
-	proposerIndex := uint64(ch.RNG.Intn(len(ch.Validators)/EPOCH_LENGTH))*EPOCH_LENGTH + ((slot + (slot / EPOCH_LENGTH)) % EPOCH_LENGTH)
+	proposerIndex := uint32(ch.RNG.Intn(len(ch.Validators)/EPOCH_LENGTH))*EPOCH_LENGTH + ((slot + (slot / EPOCH_LENGTH)) % EPOCH_LENGTH)
 	proposer := ch.Validators[proposerIndex]
 
-	// random parent block, derived from the current head, but perturbed; latency may introduce a fork in the chain
-	parentBlock := ch.getRandomTarget()
 
 	// random block-hash
 	blockHash := Hash256{}
@@ -151,15 +156,15 @@ func (ch *SimChain) SimNewBlock() {
 }
 
 func (ch *SimChain) HandleAttestation(target Hash256, id ValidatorID) {
+	// make our fork-choice mechanism aware of the new attestation
+	ch.ForkChoice.AttestIn(target, id)
 	// Update the target of the attester
 	ch.Targets[id] = target
-	// make our fork-choice mechanism aware of the new attestation
-	ch.ForkChoice.AttestIn(target)
 }
 
 func (ch *SimChain) SimNewAttestation() {
 	// select a random validator (every validator is allowed to attest here)
-	attester := ValidatorID(ch.RNG.Intn(len(ch.Validators)))
+	attester := ch.Validators[ch.RNG.Intn(len(ch.Validators))]
 	// Connect to a random target block
 	target := ch.getRandomTarget()
 	ch.HandleAttestation(target.Hash, attester)

@@ -86,7 +86,7 @@ func (gh *CachedLMDGhost) getAncestor(block *sim.Block, slot uint32) *sim.Block 
 
 	return o
 }
-func (gh *CachedLMDGhost) AttestIn(hash256 sim.Hash256) {
+func (gh *CachedLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.ValidatorID) {
 	// free, at cost of head-function.
 }
 

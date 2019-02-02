@@ -19,7 +19,7 @@ func (gh *SpecLMDGhost) SetChain(chain *sim.SimChain) {
 	gh.chain = chain
 }
 
-func (gh *SpecLMDGhost) AttestIn(hash256 sim.Hash256) {
+func (gh *SpecLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.ValidatorID) {
 	// free, at cost of head-function.
 }
 

@@ -24,7 +24,7 @@ func track(s string, startTime time.Time) {
 // TODO parametrize validator count and simulated attestations per block
 func runSim(blocks int, getForkChoice sim.GetForkChoice) {
 	forkChoice := getForkChoice()
-	chain := sim.NewChain(64, forkChoice)
+	chain := sim.NewChain(64*20, forkChoice)
 	forkChoice.SetChain(chain)
 	interval := blocks / 20
 	for n := 0; n < blocks; n++ {
@@ -49,7 +49,7 @@ func RunSpec() {
 
 func RunVitalik() {
 	defer track(runningtime("vitalik"))
-	runSim(100000, vitalik.NewVitaliksOptimizedLMDGhost)
+	runSim(50000, vitalik.NewVitaliksOptimizedLMDGhost)
 }
 
 func RunCached() {
@@ -64,7 +64,7 @@ func RunSimpleBackProp() {
 
 func RunProtolambda() {
 	defer track(runningtime("protolambda"))
-	runSim(1000, protolambda.NewProtolambdaLMDGhost)
+	runSim(10000, protolambda.NewProtolambdaLMDGhost)
 }
 
 

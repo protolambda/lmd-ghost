@@ -44,7 +44,7 @@ func (gh *VitaliksOptimizedLMDGhost) SetChain(chain *sim.SimChain) {
 	gh.chain = chain
 }
 
-func (gh *VitaliksOptimizedLMDGhost) AttestIn(hash256 sim.Hash256) {
+func (gh *VitaliksOptimizedLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.ValidatorID) {
 	// free, at cost of head function. Latest attestation map is maintained in the chain struct.
 }
 

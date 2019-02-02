@@ -1,6 +1,8 @@
 package protolambda
 
-import "lmd-ghost/sim"
+import (
+	"lmd-ghost/sim"
+)
 
 type Node struct {
 	Parent *Node
@@ -16,6 +18,7 @@ type Node struct {
 func (n *Node) AddVote() {
 	// increment the actual vote count
 	n.Votes += 1
+	//log.Printf("Added vote to %d, new count: %d\n", n.Block.Hash[0], n.Votes)
 
 	if n.Parent != nil {
 		// if we're not the best child of the parent, than we have a chance to become it.
@@ -40,6 +43,7 @@ func (n *Node) AddVote() {
 func (n *Node) RemoveVote() {
 	// decrement the actual vote count
 	n.Votes -= 1
+	//log.Printf("Removed vote from %d, new count: %d\n", n.Block.Hash[0], n.Votes)
 
 	if n.Votes < 0 {
 		panic("Warning: removed too many votes!")
@@ -94,15 +98,24 @@ func (gh *ProtolambdaLMDGhost) SetChain(chain *sim.SimChain) {
 	gh.BlockIn(chain.Blocks[chain.Justified])
 }
 
-func (gh *ProtolambdaLMDGhost) AttestIn(blockHash sim.Hash256) {
+func (gh *ProtolambdaLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.ValidatorID) {
 	// TODO combine add/remove for cutoff effect in recursive update
 
 	// remove previous attest by validator, if there is any
-	attestedBlock := gh.chain.Blocks[blockHash]
-	if attestedBlock.Slot != 0 {
-		if prevTarget, hasPrev := gh.chain.Targets[attestedBlock.Proposer]; hasPrev {
-			gh.nodes[prevTarget].RemoveVote()
-		}
+	prevTarget, hasPrev := gh.chain.Targets[attester]
+	//log.Println("=======================")
+
+	//for k, n := range gh.nodes {
+	//	log.Printf("%d: %d\n", k[0], n.Votes)
+	//}
+	//log.Printf("Attesation: %d prev %d, by %d\n", blockHash[0], prevTarget[0], attester)
+	if prevTarget == blockHash {
+		// nothing to do, attest does not change vote
+		return
+	}
+
+	if hasPrev {
+		gh.nodes[prevTarget].RemoveVote()
 	}
 
 	// add new attest by validator
@@ -117,6 +130,22 @@ func (gh *ProtolambdaLMDGhost) BlockIn(block *sim.Block) {
 		node.Parent = gh.nodes[block.ParentHash]
 		node.IndexAsChild = uint32(len(node.Parent.Children))
 		node.Parent.Children = append(node.Parent.Children, node)
+		// If this is the only/first node that is added,
+		//  then it does not need attestations, it will just be the new target.
+		if len(node.Parent.Children) == 1 {
+			// propagate the new best-target up, as far as necessary
+			p := node.Parent
+			c := node
+			for p != nil {
+				if c.IndexAsChild == 0 {
+					p.BestTarget = block
+					c = p
+					p = p.Parent
+				} else {
+					break
+				}
+			}
+		}
 	}
 	// best end-target is the block itself
 	node.BestTarget = block
