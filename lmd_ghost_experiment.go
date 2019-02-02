@@ -2,6 +2,7 @@ package main
 
 import (
 	"lmd-ghost/choices/cached"
+	"lmd-ghost/choices/simple_back_prop"
 	"lmd-ghost/choices/spec"
 	"lmd-ghost/choices/vitalik"
 	"lmd-ghost/sim"
@@ -55,8 +56,14 @@ func RunCached() {
 	runSim(3000, cached.NewCachedLMDGhost)
 }
 
+func RunSimpleBackProp() {
+	defer track(runningtime("simple-back-prop"))
+	runSim(20000, simple_back_prop.NewSimpleBackPropLMDGhost)
+}
+
 func main()  {
-	RunSpec()
-	RunVitalik()
-	RunCached()
+	//RunSpec()
+	//RunVitalik()
+	//RunCached()
+	//RunSimpleBackProp()
 }
