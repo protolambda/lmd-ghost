@@ -64,13 +64,13 @@ func RunSimpleBackProp() {
 
 func RunProtolambda() {
 	defer track(runningtime("protolambda"))
-	runSim(10000, protolambda.NewProtolambdaLMDGhost)
+	runSim(50000, protolambda.NewProtolambdaLMDGhost)
 }
 
 
 func main()  {
 	//RunSpec()
-	//RunVitalik()
+	RunVitalik()
 	//RunCached()
 	//RunSimpleBackProp()
 	RunProtolambda()

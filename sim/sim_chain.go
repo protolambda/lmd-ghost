@@ -156,6 +156,13 @@ func (ch *SimChain) SimNewBlock() {
 }
 
 func (ch *SimChain) HandleAttestation(target Hash256, id ValidatorID) {
+	// The attestation must be of a higher slot to be processed.
+	// If an attestation of the same slot height is found,
+	//  then the "older" is preferred over the "newer" (in eyes of local validator) attestation.
+	// "The one that the validator observed first"
+	if prev, hasPrev := ch.Targets[id]; hasPrev && ch.Blocks[prev].Slot > ch.Blocks[target].Slot {
+		return
+	}
 	// make our fork-choice mechanism aware of the new attestation
 	ch.ForkChoice.AttestIn(target, id)
 	// Update the target of the attester

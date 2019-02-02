@@ -20,23 +20,18 @@ func (n *Node) AddVote() {
 	n.Votes += 1
 	//log.Printf("Added vote to %d, new count: %d\n", n.Block.Hash[0], n.Votes)
 
-	if n.Parent != nil {
-		// if we're not the best child of the parent, than we have a chance to become it.
-		if n.IndexAsChild != 0 {
-			if oldBest := n.Parent.Children[0]; n.Votes > oldBest.Votes {
-				// the best has been overthrown, now swap it out
-				n.Parent.Children[0] = n
-				n.Parent.Children[n.IndexAsChild] = oldBest
-				oldBest.IndexAsChild = n.IndexAsChild
-				n.IndexAsChild = 0
+	// if we're not the best child of the parent, than we have a chance to become it.
+	if n.Parent != nil && n.IndexAsChild != 0 {
+		if oldBest := n.Parent.Children[0]; n.Votes > oldBest.Votes {
+			// the best has been overthrown, now swap it out
+			n.Parent.Children[0] = n
+			n.Parent.Children[n.IndexAsChild] = oldBest
+			oldBest.IndexAsChild = n.IndexAsChild
+			n.IndexAsChild = 0
 
-				// Update the target of the parent, it inherits it from this node
-				n.Parent.BestTarget = n.BestTarget
-			}
+			// Update the target of the parent, it inherits it from this node
+			n.Parent.BestTarget = n.BestTarget
 		}
-
-		// Propagate the vote
-		n.Parent.AddVote()
 	}
 }
 
@@ -49,32 +44,43 @@ func (n *Node) RemoveVote() {
 		panic("Warning: removed too many votes!")
 	}
 
-	if n.Parent != nil {
-		// if we're the best child of the parent, than we have a chance to lose our position to the second best.
-		if n.IndexAsChild == 0 && len(n.Parent.Children) > 1 {
-			// TODO: with some sorting it may be faster to keep track of the 2nd best child
-			newBest := n
-			for i := 1; i < len(n.Parent.Children); i++ {
-				c := n.Parent.Children[i]
-				if c.Votes > newBest.Votes {
-					newBest = c
-				}
-			}
-			// check if we actually had to update the new-best
-			if newBest != n {
-				// we have been overthrown, now swap in the new best
-				n.Parent.Children[0] = newBest
-				n.Parent.Children[newBest.IndexAsChild] = n
-				n.IndexAsChild = newBest.IndexAsChild
-				newBest.IndexAsChild = 0
-
-				// Update the target of the parent, it inherits it from the new-best
-				n.Parent.BestTarget = newBest.BestTarget
+	// if we're the best child of the parent, than we have a chance to lose our position to the second best.
+	if n.Parent != nil && n.IndexAsChild == 0 && len(n.Parent.Children) > 1 {
+		// TODO: with some sorting it may be faster to keep track of the 2nd best child
+		newBest := n
+		for i := 1; i < len(n.Parent.Children); i++ {
+			c := n.Parent.Children[i]
+			if c.Votes > newBest.Votes {
+				newBest = c
 			}
 		}
+		// check if we actually had to update the new-best
+		if newBest != n {
+			// we have been overthrown, now swap in the new best
+			n.Parent.Children[0] = newBest
+			n.Parent.Children[newBest.IndexAsChild] = n
+			n.IndexAsChild = newBest.IndexAsChild
+			newBest.IndexAsChild = 0
 
-		// Propagate the vote removal
-		n.Parent.RemoveVote()
+			// Update the target of the parent, it inherits it from the new-best
+			n.Parent.BestTarget = newBest.BestTarget
+		}
+	}
+}
+
+func (n *Node) PropagateBestTargetUp() {
+	// propagate the new best-target up, as far as necessary
+	p := n.Parent
+	c := n
+	for p != nil {
+		if c.IndexAsChild == 0 {
+			p.BestTarget = n.BestTarget
+			c = p
+			p = p.Parent
+		} else {
+			// stop propagating when the child is not the best child of the parent
+			break
+		}
 	}
 }
 
@@ -99,7 +105,6 @@ func (gh *ProtolambdaLMDGhost) SetChain(chain *sim.SimChain) {
 }
 
 func (gh *ProtolambdaLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.ValidatorID) {
-	// TODO combine add/remove for cutoff effect in recursive update
 
 	// remove previous attest by validator, if there is any
 	prevTarget, hasPrev := gh.chain.Targets[attester]
@@ -115,17 +120,57 @@ func (gh *ProtolambdaLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.Vali
 	}
 
 	if hasPrev {
-		gh.nodes[prevTarget].RemoveVote()
-	}
+		// there is a previous attestation, that becomes invalid,
+		// but it may share a path to the root, which could stay as-is regarding vote count,
+		//  and possibly also regarding the bestTarget
+		prevBranch := gh.nodes[prevTarget]
+		newBranch := gh.nodes[blockHash]
+		for {
+			if prevBranch.Parent == newBranch.Parent {
+				sharedParent := prevBranch.Parent
+				// Check if prev-branch and new-branch are unconnected due to lack of history
+				//  (edge case, if you prune not everything)
+				if sharedParent == nil {
+					// nothing to propagate up, we're done
+					break
+				}
 
-	// add new attest by validator
-	gh.nodes[blockHash].AddVote()
+				oldBestTarget := sharedParent.BestTarget
+				prevBranch.RemoveVote()
+				newBranch.AddVote()
+				// if the target changed, we have to propagate it,
+				// but the vote count will stay the same (Sum of branches)
+				if sharedParent.BestTarget != oldBestTarget {
+					sharedParent.PropagateBestTargetUp()
+				}
+				break
+			} else if prevBranch.Block.Slot > newBranch.Block.Slot {
+				// Depending on the heights of the branches, we walk down.
+				// Walk down the prev-branch
+				prevBranch.RemoveVote()
+				prevBranch = prevBranch.Parent
+			} else {
+				// Walk down the new-branch
+				newBranch.AddVote()
+				newBranch = newBranch.Parent
+			}
+		}
+	} else {
+		// just add the vote, and propagate back all the way, nothing else to do.
+		n := gh.nodes[blockHash]
+		for n != nil {
+			n.AddVote()
+			n = n.Parent
+		}
+	}
 }
 
 func (gh *ProtolambdaLMDGhost) BlockIn(block *sim.Block) {
 	// *Note*: The data-structure is completely the same every time a block is added.
 	//  Just one node more + a change to its parent.
 	node := &Node{Block: block, Votes: 0}
+	// best end-target is the block itself
+	node.BestTarget = block
 	if block.Slot != 0 {
 		node.Parent = gh.nodes[block.ParentHash]
 		node.IndexAsChild = uint32(len(node.Parent.Children))
@@ -133,22 +178,9 @@ func (gh *ProtolambdaLMDGhost) BlockIn(block *sim.Block) {
 		// If this is the only/first node that is added,
 		//  then it does not need attestations, it will just be the new target.
 		if len(node.Parent.Children) == 1 {
-			// propagate the new best-target up, as far as necessary
-			p := node.Parent
-			c := node
-			for p != nil {
-				if c.IndexAsChild == 0 {
-					p.BestTarget = block
-					c = p
-					p = p.Parent
-				} else {
-					break
-				}
-			}
+			node.PropagateBestTargetUp()
 		}
 	}
-	// best end-target is the block itself
-	node.BestTarget = block
 	// expected branch factor is 2 (??), capacity of 8 should be fine? (TODO)
 	node.Children = make([]*Node, 0, 8)
 	// Add the node to the collection
