@@ -2,6 +2,7 @@ package main
 
 import (
 	"lmd-ghost/choices/cached"
+	"lmd-ghost/choices/protolambda"
 	"lmd-ghost/choices/simple_back_prop"
 	"lmd-ghost/choices/spec"
 	"lmd-ghost/choices/vitalik"
@@ -61,9 +62,16 @@ func RunSimpleBackProp() {
 	runSim(20000, simple_back_prop.NewSimpleBackPropLMDGhost)
 }
 
+func RunProtolambda() {
+	defer track(runningtime("protolambda"))
+	runSim(1000, protolambda.NewProtolambdaLMDGhost)
+}
+
+
 func main()  {
 	//RunSpec()
 	//RunVitalik()
 	//RunCached()
 	//RunSimpleBackProp()
+	RunProtolambda()
 }

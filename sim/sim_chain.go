@@ -40,7 +40,7 @@ type SimChain struct {
 
 	Blocks map[Hash256]*Block
 
-	// The latest message of each proposer, some proposers may not have one
+	// The latest message of each (active) validator, some validators may not have one
 	Targets map[ValidatorID]Hash256
 
 	Justified Hash256
