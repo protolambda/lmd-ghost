@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"lmd-ghost/choices/cached"
 	"lmd-ghost/choices/protolambda"
 	"lmd-ghost/choices/simple_back_prop"
 	"lmd-ghost/choices/spec"
 	"lmd-ghost/choices/vitalik"
 	"lmd-ghost/sim"
+	"lmd-ghost/viz"
 	"log"
 	"time"
 )
@@ -21,18 +23,27 @@ func track(s string, startTime time.Time) {
 	log.Println("End:	", s, "took", endTime.Sub(startTime))
 }
 
-// TODO parametrize validator count and simulated attestations per block
-func runSim(blocks int, getForkChoice sim.GetForkChoice) {
+var forkRules = map[string]sim.GetForkChoice {
+	"spec": spec.NewSpecLMDGhost,
+	"vitalik": vitalik.NewVitaliksOptimizedLMDGhost,
+	"cached": cached.NewCachedLMDGhost,
+	"simple-back-prop": simple_back_prop.NewSimpleBackPropLMDGhost,
+	"protolambda": protolambda.NewProtolambdaLMDGhost,
+}
+
+
+// TODO parametrize latency, simulated attestations per block, and slot-skip
+func runSim(blocks int, validatorCount int, name string) {
+	simName := fmt.Sprintf("%s__%d_blocks__%d_validators", name, blocks, validatorCount)
+	defer track(runningtime(simName))
+	getForkChoice := forkRules[name]
 	forkChoice := getForkChoice()
-	chain := sim.NewChain(64*20, forkChoice)
+	chain := sim.NewChain(validatorCount, forkChoice)
 	forkChoice.SetChain(chain)
-	interval := blocks / 20
+	logInterval := blocks / 20
 	for n := 0; n < blocks; n++ {
-		if n % interval == 0 {
+		if n % logInterval == 0 {
 			log.Printf("total %d blocks, head at slot: %d\n", len(chain.Blocks), chain.Blocks[chain.Head].Slot)
-		}
-		if len(chain.Blocks) > blocks {
-			panic("Too many blocks")
 		}
 		chain.SimNewBlock()
 		for a := 0; a < 100; a++ {
@@ -40,38 +51,9 @@ func runSim(blocks int, getForkChoice sim.GetForkChoice) {
 		}
 		chain.UpdateHead()
 	}
+	viz.CreateVizGraph("out/" + simName, chain)
 }
-
-func RunSpec() {
-	defer track(runningtime("spec"))
-	runSim(1000, spec.NewSpecLMDGhost)
-}
-
-func RunVitalik() {
-	defer track(runningtime("vitalik"))
-	runSim(50000, vitalik.NewVitaliksOptimizedLMDGhost)
-}
-
-func RunCached() {
-	defer track(runningtime("cached"))
-	runSim(3000, cached.NewCachedLMDGhost)
-}
-
-func RunSimpleBackProp() {
-	defer track(runningtime("simple-back-prop"))
-	runSim(20000, simple_back_prop.NewSimpleBackPropLMDGhost)
-}
-
-func RunProtolambda() {
-	defer track(runningtime("protolambda"))
-	runSim(50000, protolambda.NewProtolambdaLMDGhost)
-}
-
 
 func main()  {
-	//RunSpec()
-	RunVitalik()
-	//RunCached()
-	//RunSimpleBackProp()
-	RunProtolambda()
+	runSim(10000, 64*10, "protolambda")
 }

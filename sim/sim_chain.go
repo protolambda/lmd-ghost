@@ -23,7 +23,7 @@ type Block struct {
 }
 
 const EPOCH_LENGTH = 64
-const LATENCY_FACTOR = 0.9
+const LATENCY_FACTOR = 0.8
 const MAX_SLOT_SKIP = 4
 
 type ForkChoice interface {
