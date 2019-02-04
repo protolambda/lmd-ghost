@@ -37,7 +37,7 @@ The spec is very straightforward:
 1. Start at the justified block
 2. Compare every child, to choose the best one
 3. Comparison is based on scores
-4. Scores are simple, but highly ineffecient:
+4. Scores are simple, but highly inefficient:
  -- We loop through every attestation
    ** If the attestation has the child as an ancestor, it adds up to the total vote count for the child
 5. The best child wins, and repeat 2 - 4 from there, until there is no children left.
@@ -73,8 +73,9 @@ These include:
 
 ### Simple attestation propagation DAG: `simple_back_prop`
 
-Note: Calling it a DAG, since pruning could be slot-based, which would means nodes older than the justified slot are thrown out,
- splitting the initial tree in separate trees. Non-canonical components in the DAG will eventually be pruned. 
+> Note: I'm calling it a DAG, since pruning could be slot-based, which would means nodes older than the justified slot are thrown out,
+ splitting the initial tree in separate disconnected trees. Non-canonical components in the DAG will eventually be pruned.
+
 Another way to handle votes is to focus more on the "DAG": every block is a node, with one input (parent block), and children (blocks having the node as parent).
 So to find the best path, all we need to do is:
  
@@ -96,7 +97,7 @@ A different approach to LMD-GHOST by @protolambda.
 
 The real trade-off between computation-time when adding attestations, and determining the head.
 
-#### The good
+#### The benefits
 
 - Instead of doing any work in the computation of the head, nothing is done, the lookup is basically free; `O(1)`.
 - And as a side-effect of the data-structure being used, the same thing applies when you want to look-up the head for any other starting-point than the justified block, it's also `O(1)`.
@@ -122,6 +123,7 @@ The only thing is we have to find the point in the DAG where they dissolve each 
 
 This is rather easy: zig-zag between the two branches, propagating both the `-1` and `+1` one node back to the root, until we arrived at the same node.
 At this point we can stop the zig-zag, since the total weight for this node does not change.
+
 However, one thing may have changed (but most likely won't): the new branch (`+1`) could have overtaken the old one (`-1`).
 This can be checked efficiently, and all we have to do is propagate this change back up the tree.
 And even this may be cut-off, as we may arrive at an earlier fork where our branch is not the best choice: no target change from there!
