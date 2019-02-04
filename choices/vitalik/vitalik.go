@@ -5,6 +5,14 @@ import (
 	"math/big"
 )
 
+/*
+
+NOTE: This implementation is a port of the research work by vitalik, originally written in Python.
+The MIT license does not apply to this work. Due to the lack of a license file in the research repository,
+ you would have to ask Vitalik to use this algorithm under your own license.
+
+ */
+
 type CacheKey [32 + 4]uint8
 
 // Trick to get a quick conversion array, gets the log of a number
