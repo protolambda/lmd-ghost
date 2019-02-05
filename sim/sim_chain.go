@@ -4,20 +4,7 @@ import (
 	"math/rand"
 )
 
-// The effective identifier of a block
-type Hash256 [32]uint8
-
-// Pubkey (or reference to one in a register) in real-world
-type ValidatorID int64
-
 type Block struct {
-	ParentHash Hash256
-
-	Hash Hash256
-
-	Proposer ValidatorID
-
-	Slot uint32
 
 	Children []*Block
 }
@@ -26,16 +13,6 @@ const EPOCH_LENGTH = 64
 const LATENCY_FACTOR = 0.8
 const MAX_SLOT_SKIP = 4
 
-type ForkChoice interface {
-	SetChain(chain *SimChain)
-	BlockIn(block *Block)
-	/// Note: the target attestion in the chain update will be updated with the given hash after calling this.
-	// This enables you to access the previous latest attestation of the validator
-	AttestIn(blockHash Hash256, attester ValidatorID)
-	HeadFn() Hash256
-}
-
-type GetForkChoice func() ForkChoice
 
 type SimChain struct {
 	RNG *rand.Rand

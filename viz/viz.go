@@ -2,7 +2,6 @@ package viz
 
 import (
 	"encoding/csv"
-	"encoding/hex"
 	"fmt"
 	"lmd-ghost/sim"
 	"os"
@@ -17,13 +16,6 @@ func check(err error, msg string) {
 	if err != nil {
 		panic(err)
 	}
-}
-
-// encodes hash-256 to a hexadecimal string, 64 chars, no "0x" prefix
-func hashToHexStr(hash sim.Hash256) string {
-	dst := make([]byte, hex.EncodedLen(len(hash)))
-	hex.Encode(dst, hash[:])
-	return string(dst)
 }
 
 func writeNodesCSV(path string, chain *sim.SimChain) {
