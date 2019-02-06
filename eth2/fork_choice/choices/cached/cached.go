@@ -103,8 +103,20 @@ func (gh *CachedLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
 	}
 }
 
-func (gh *CachedLMDGhost) OnNewNode(node *dag.DagNode) {
-	// free, at cost of head-function
+func (gh *CachedLMDGhost) OnNewNode(block *dag.DagNode) {
+	// update the ancestor data (used for logarithmic lookup)
+	for i := uint8(0); i < 16; i++ {
+		if block.Slot % (1 << i) == 0 {
+			gh.ancestors[i][block] = block.Parent
+		} else {
+			gh.ancestors[i][block] = gh.ancestors[i][block.Parent]
+		}
+	}
+
+	// update maximum known slot
+	if block.Slot > gh.maxKnownSlot {
+		gh.maxKnownSlot = block.Slot
+	}
 }
 
 

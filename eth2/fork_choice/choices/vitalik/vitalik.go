@@ -1,15 +1,14 @@
 package vitalik
 
 import (
-	"lmd-ghost/sim"
-	"math/big"
+	"lmd-ghost/eth2/dag"
+	"lmd-ghost/eth2/fork_choice"
 )
 
 /*
 
-NOTE: This implementation is a port of the research work by vitalik, originally written in Python.
-The MIT license does not apply to this work. Due to the lack of a license file in the research repository,
- you would have to ask Vitalik to use this algorithm under your own license.
+Note that Vitalik's algorithm is a port (with some updates) from the original (written in Python) in the Ethereum research repo, which is also licensed to MIT, but to Vitalik.
+Original of Vitalik can be found here: https://github.com/ethereum/research/blob/master/ghost/ghost.py
 
  */
 
@@ -28,41 +27,52 @@ func init() {
 /// Orignal python version here: https://github.com/ethereum/research/blob/master/ghost/ghost.py
 type VitaliksOptimizedLMDGhost struct {
 
-	chain *sim.SimChain
+	dag *dag.BeaconDag
 
-	cache map[CacheKey]sim.Hash256
+	LatestScores map[*dag.DagNode]int64
 
-	// slot -> hash -> ancestor
-	ancestors map[uint8]map[sim.Hash256]sim.Hash256
+	cache map[CacheKey]*dag.DagNode
 
-	maxKnownSlot uint32
+	// slot -> block-ref -> ancestor
+	ancestors map[uint8]map[*dag.DagNode]*dag.DagNode
+
+	maxKnownSlot uint64
 }
 
-func NewVitaliksOptimizedLMDGhost() sim.ForkChoice {
+func NewVitaliksOptimizedLMDGhost() fork_choice.ForkChoice {
 	res := new(VitaliksOptimizedLMDGhost)
-	res.cache = make(map[CacheKey]sim.Hash256)
-	res.ancestors = make(map[uint8]map[sim.Hash256]sim.Hash256)
+	res.cache = make(map[CacheKey]*dag.DagNode)
+	res.ancestors = make(map[uint8]map[*dag.DagNode]*dag.DagNode)
 	for i := uint8(0); i < 16; i++ {
-		res.ancestors[i] = make(map[sim.Hash256]sim.Hash256)
+		res.ancestors[i] = make(map[*dag.DagNode]*dag.DagNode)
 	}
 	return res
 }
 
-func (gh *VitaliksOptimizedLMDGhost) SetChain(chain *sim.SimChain) {
-	gh.chain = chain
+func (gh *VitaliksOptimizedLMDGhost) SetDag(dag *dag.BeaconDag) {
+	gh.dag = dag
 }
 
-func (gh *VitaliksOptimizedLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.ValidatorID) {
-	// free, at cost of head function. Latest attestation map is maintained in the chain struct.
+func (gh *VitaliksOptimizedLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
+	for _, v := range changes {
+		gh.LatestScores[v.Target] += v.ScoreDelta
+	}
+	// delete targets that have a 0 score
+	for k, v := range gh.LatestScores {
+		if v == 0 {
+			// deletion during map iteration, safe in Go
+			delete(gh.LatestScores, k)
+		}
+	}
 }
 
-func (gh *VitaliksOptimizedLMDGhost) BlockIn(block *sim.Block) {
+func (gh *VitaliksOptimizedLMDGhost) OnNewNode(block *dag.DagNode) {
 	// update the ancestor data (used for logarithmic lookup)
 	for i := uint8(0); i < 16; i++ {
 		if block.Slot % (1 << i) == 0 {
-			gh.ancestors[i][block.Hash] = block.ParentHash
+			gh.ancestors[i][block] = block.Parent
 		} else {
-			gh.ancestors[i][block.Hash] = gh.ancestors[i][block.ParentHash]
+			gh.ancestors[i][block] = gh.ancestors[i][block.Parent]
 		}
 	}
 
@@ -73,7 +83,7 @@ func (gh *VitaliksOptimizedLMDGhost) BlockIn(block *sim.Block) {
 }
 
 /// The spec get_ancestor, but with caching, and skipping ahead logarithmically
-func (gh *VitaliksOptimizedLMDGhost) getAncestor(block *sim.Block, slot uint32) *sim.Block {
+func (gh *VitaliksOptimizedLMDGhost) getAncestor(block *dag.DagNode, slot uint64) *dag.DagNode {
 
 	if slot >= block.Slot {
 		if slot > block.Slot {
@@ -85,7 +95,7 @@ func (gh *VitaliksOptimizedLMDGhost) getAncestor(block *sim.Block, slot uint32) 
 
 	// construct key
 	cacheKey := CacheKey{}
-	copy(cacheKey[:32], block.Hash[:])
+	copy(cacheKey[:32], block.Key[:])
 	cacheKey[32] = uint8(slot >> 24)
 	cacheKey[33] = uint8(slot >> 16)
 	cacheKey[34] = uint8(slot >> 8)
@@ -94,17 +104,16 @@ func (gh *VitaliksOptimizedLMDGhost) getAncestor(block *sim.Block, slot uint32) 
 	// check cache
 	if res, ok := gh.cache[cacheKey]; ok {
 		// hit!
-		return gh.chain.Blocks[res]
+		return res
 	}
 
-	if x := gh.chain.Blocks[gh.ancestors[logz[block.Slot - slot - 1]][block.Hash]]; x == nil {
+	if x := gh.ancestors[logz[block.Slot - slot - 1]][block]; x == nil {
 		panic("Ancestors data is invalid")
 	}
 
 	// this will be the output
 	// skip ahead logarithmically to find the ancestor, and dive in recursively
-	skipHash := gh.ancestors[logz[block.Slot - slot - 1]][block.Hash]
-	skipBlock := gh.chain.Blocks[skipHash]
+	skipBlock := gh.ancestors[logz[block.Slot - slot - 1]][block]
 	o := gh.getAncestor(skipBlock, slot)
 
 	if o.Slot != slot {
@@ -112,93 +121,55 @@ func (gh *VitaliksOptimizedLMDGhost) getAncestor(block *sim.Block, slot uint32) 
 	}
 
 	// cache this, so we never have to handle beyond this point again.
-	gh.cache[cacheKey] = o.Hash
+	gh.cache[cacheKey] = o
 
 	return o
 }
 
-// Port of a rather strange looking function written by Vitalik.
-// Best guess (@protolambda) is that the uniformness of the hashes is exploited to try and find a bias towards an entry
-// that belongs to the highest-voted 50% of a random sampling, in a lot of cases. Enough to warrant a choice for it.
-// Ask Vitalik for his own reasoning, lol.
-func (gh *VitaliksOptimizedLMDGhost) chooseBestChild(votes map[sim.Hash256]float64) *sim.Block {
-	bitmask := big.NewInt(0)
-	for bit := int(255); bit >= 0; bit-- {
-		zeroVotes := float64(0)
-		oneVotes := float64(0)
-		var singleCandidate *sim.Block
-		hasNoSingleCandidate := false
-		for k, v := range votes {
-			candidateAsInt := new(big.Int)
-			candidateAsInt.SetBytes(k[:])
-			if new(big.Int).Rsh(candidateAsInt, uint(bit+1)).Cmp(bitmask) != 0 {
-				continue
-			}
-			if new(big.Int).Rsh(candidateAsInt, uint(bit)).Bit(0) == 0 {
-				zeroVotes += v
-			} else {
-				oneVotes += v
-			}
-			if singleCandidate == nil && !hasNoSingleCandidate {
-				singleCandidate = gh.chain.Blocks[k]
-			} else {
-				hasNoSingleCandidate = true
-			}
-		}
-		bitmask.Lsh(bitmask, 1)
-		if oneVotes > zeroVotes {
-			bitmask.SetBit(bitmask, 0, 1)
-		} else {
-			bitmask.SetBit(bitmask, 0, 0)
-		}
-
-		if singleCandidate != nil {
-			return singleCandidate
-		}
-	}
-	return nil
-}
-
-func (gh *VitaliksOptimizedLMDGhost) getPowerOf2Below(x uint32) uint32 {
+func (gh *VitaliksOptimizedLMDGhost) getPowerOf2Below(x uint64) uint64 {
 	// simply logz it, and 2^e this, to get the closes power of 2
 	return 1 << logz[x]
 }
 
-func (gh *VitaliksOptimizedLMDGhost) getClearWinner(latestVotes map[sim.Hash256]uint32, slot uint32) *sim.Block {
+func (gh *VitaliksOptimizedLMDGhost) getClearWinner(latestVotes map[*dag.DagNode]int64, slot uint64) *dag.DagNode {
 	// get the total vote count at this height
-	totalVoteCount := uint32(0)
+	totalVoteCount := int64(0)
 	// map of vote-counts for every hash at this height
-	atHeight := make(map[sim.Hash256]uint32)
+	atHeight := make(map[*dag.DagNode]int64)
 	for t, v := range latestVotes {
-		tBlock := gh.chain.Blocks[t]
-		anc := gh.getAncestor(tBlock, slot)
+		anc := gh.getAncestor(t, slot)
 		if anc != nil {
-			atHeight[anc.Hash] = atHeight[anc.Hash] + v
+			atHeight[anc] = atHeight[anc] + v
 			totalVoteCount += v
 		}
 	}
 	for k, v := range atHeight {
 		if v >= totalVoteCount / 2 {
-			return gh.chain.Blocks[k]
+			return k
 		}
 	}
 	return nil
 }
 
-func (gh *VitaliksOptimizedLMDGhost) HeadFn() sim.Hash256 {
+func (gh *VitaliksOptimizedLMDGhost) OnStartChange(newStart *dag.DagNode) {
+	// TODO prune/change ancestors cache?
+}
+
+func (gh *VitaliksOptimizedLMDGhost) HeadFn() *dag.DagNode {
 	// Trick: At first we consider all targets (latest attestations), but later we start forgetting attestations
 	//  that do not affect the remaining path-finding from start to head.
-	latestVotes := make(map[sim.Hash256]uint32)
-	for _, t := range gh.chain.Targets {
-		// every attestation counts as 1 in latest spec (v0.1).
-		// No balances involved, like in the original version of this lmd implementation of LMD-GHOST.
-		latestVotes[t] = latestVotes[t] + 1
+	// Modification from original: we keep track of total attestation-score per target block, instead of all attestations.
+	// Hence, we can just copy the map.
+	latestVotes := make(map[*dag.DagNode]int64)
+	for t, w := range gh.LatestScores {
+		// Copy weight
+		latestVotes[t] = w
 	}
-	head := gh.chain.Blocks[gh.chain.Justified]
+	head := gh.dag.Start
 	for {
 		// short var "c": head.Children
 		if len(head.Children) == 0 {
-			return head.Hash
+			return head
 		}
 		// Trick: check every depth for a clear 50% winner. This enables us to skip ahead towards the leafs of the tree.
 		// And do so from leaf-level, back towards 0, to get the most out of this trick.
@@ -221,25 +192,35 @@ func (gh *VitaliksOptimizedLMDGhost) HeadFn() sim.Hash256 {
 			// Dubbed a "only-child fast-path"
 			head = head.Children[0]
 		} else {
-			childVotes := make(map[sim.Hash256]float64)
-			for _, c := range head.Children {
-				childVotes[c.Hash] = 0.01
-			}
-			for t, v := range latestVotes {
-				child := gh.getAncestor(gh.chain.Blocks[t], head.Slot + 1)
-				if child != nil {
-					childVotes[child.Hash] = childVotes[child.Hash] + float64(v)
+			// This process is similar to getVoteCount in the spec implementation,
+			//  but we add up votes for every child with just 1 iteration through all latest-votes.
+			childScores := make(map[*dag.DagNode]int64)
+			for t, w := range latestVotes {
+				if child := gh.getAncestor(t, head.Slot + 1); child != nil {
+					childScores[child] += w
 				}
 			}
-			head = gh.chooseBestChild(childVotes)
+
+			// Choose the best child
+			// Mod from the original implementation, that did something with the hashes, for binary LMD-GHOST.
+			bestItem := head.Children[0]
+			var bestScore int64 = 0
+			for child, childScore := range childScores {
+				if childScore > bestScore {
+					bestScore = childScore
+					bestItem = child
+				}
+			}
+
+			head = bestItem
 		}
 
 		// No definitive head has been found yet, continue path-finding, after doing some post-processing for this round.
 
 		// Post-process; optimize the graph by removing votes that do not belong to the current head.
-		deletes := make([]sim.Hash256, 0)
+		deletes := make([]*dag.DagNode, 0)
 		for k := range latestVotes {
-			if anc := gh.getAncestor(gh.chain.Blocks[k], head.Slot); anc == nil || anc.Hash != head.Hash {
+			if anc := gh.getAncestor(k, head.Slot); anc == nil || anc != head {
 				deletes = append(deletes, k)
 			}
 		}

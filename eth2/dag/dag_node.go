@@ -8,11 +8,14 @@ type DagNode struct {
 
 	Children []*DagNode
 
+	// note: it's preferred to just use the pointer to this node as a key wherever possible.
+	// The key can still be used to make super-keys (here: concatenation of keys) etc. for caching and other optimizations.
 	Key common.Hash256
 
 	Slot uint64
 
-	// Note: unused in some algorithms. E.g. spec implementation.
+	// Note: unused in most algorithms. Most algorithms keep track of scores with a map of latest-scores,
+	//  and optimized access to this map from another point in the graph.
 	Weight int64
 
 	// TODO store extra data in dag itself, for different fork-choice implementations?

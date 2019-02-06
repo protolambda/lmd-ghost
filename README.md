@@ -144,7 +144,8 @@ Suggestions are welcome! Please submit an issue or a PR.
 
 Algorithms licensed under MIT. See license file.
 
-Also note that Vitalik's algorithm is a port from original in the Ethereum research repo, which may have different license requirements. 
-I did a best-effort but could not find any license file. There is an open issue to make the repository MIT (licensed to Vitalik) however: https://github.com/ethereum/research/pull/92
+Also note that Vitalik's algorithm is a port (with some updates) from the original in the Ethereum research repo, which is also licensed to MIT, but to Vitalik.
+Original of Vitalik can be found here: https://github.com/ethereum/research/blob/master/ghost/ghost.py
+
 
 

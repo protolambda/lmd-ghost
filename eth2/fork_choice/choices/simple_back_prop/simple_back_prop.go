@@ -1,81 +1,96 @@
 package simple_back_prop
 
-import "lmd-ghost/sim"
+import (
+	"lmd-ghost/eth2/dag"
+	"lmd-ghost/eth2/fork_choice"
+)
 
 /// A simple take on using a DAG for the fork-choice.
 /// Stores entries in DAG, but back-propagates target votes every time the head is computed.
 type SimpleBackPropLMDGhost struct {
 
-	chain *sim.SimChain
+	dag *dag.BeaconDag
 
-	maxKnownSlot uint32
+	maxKnownSlot uint64
+
+	LatestScores map[*dag.DagNode]int64
 }
 
-func NewSimpleBackPropLMDGhost() sim.ForkChoice {
+func NewSimpleBackPropLMDGhost() fork_choice.ForkChoice {
 	return new(SimpleBackPropLMDGhost)
 }
 
-func (gh *SimpleBackPropLMDGhost) SetChain(chain *sim.SimChain) {
-	gh.chain = chain
+func (gh *SimpleBackPropLMDGhost) SetDag(dag *dag.BeaconDag) {
+	gh.dag = dag
 }
 
-func (gh *SimpleBackPropLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.ValidatorID) {
-	// free, at cost of head-function.
+func (gh *SimpleBackPropLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
+	for _, v := range changes {
+		gh.LatestScores[v.Target] += v.ScoreDelta
+	}
+	// delete targets that have a 0 score
+	for k, v := range gh.LatestScores {
+		if v == 0 {
+			// deletion during map iteration, safe in Go
+			delete(gh.LatestScores, k)
+		}
+	}
 }
 
-func (gh *SimpleBackPropLMDGhost) BlockIn(block *sim.Block) {
+func (gh *SimpleBackPropLMDGhost) OnNewNode(block *dag.DagNode) {
 	// almost free, we back-propagate all at once, when we need to.
 	if block.Slot > gh.maxKnownSlot {
 		gh.maxKnownSlot = block.Slot
 	}
 }
 
-type ChildScore struct {
-	ChildHash sim.Hash256
-	ChildVotes uint32
+func (gh *SimpleBackPropLMDGhost) OnStartChange(newStart *dag.DagNode) {
+	// nothing to do when the start changes
 }
 
-func (gh *SimpleBackPropLMDGhost) HeadFn() sim.Hash256 {
-	// Keep track of votes for each block, per height
-	votesAtHeight := make([]map[sim.Hash256]uint32, gh.maxKnownSlot + 1)
-	for i := uint32(0); i <= gh.maxKnownSlot; i++ {
-		votesAtHeight[i] = make(map[sim.Hash256]uint32)
+type ChildScore struct {
+	Child *dag.DagNode
+	ChildScore int64
+}
+
+func (gh *SimpleBackPropLMDGhost) HeadFn() *dag.DagNode {
+	// Keep track of weight for each block, per height
+	weightedBlocksAtHeight := make([]map[*dag.DagNode]int64, gh.maxKnownSlot + 1)
+	for i := uint64(0); i <= gh.maxKnownSlot; i++ {
+		weightedBlocksAtHeight[i] = make(map[*dag.DagNode]int64)
 	}
-	// put all initial votes in the "DAG" (or tree, if non-justified roots would be removed)
-	for _, t := range gh.chain.Targets {
-		targetBlock := gh.chain.Blocks[t]
-		votesAtHeight[targetBlock.Slot][t] = votesAtHeight[targetBlock.Slot][t] + 1
+	// put all initial weights in the "DAG" (or tree, if non-justified roots would be removed)
+	for t, w := range gh.LatestScores {
+		weightedBlocksAtHeight[t.Slot][t] = weightedBlocksAtHeight[t.Slot][t] + w
 	}
-	bestChildMapping := make(map[sim.Hash256]ChildScore)
+	bestChildMapping := make(map[*dag.DagNode]ChildScore)
 	// Now back-propagate, per slot height
 	for i := gh.maxKnownSlot; i > 0; i-- {
 		// Propagate all higher-slot votes back to the root of the tree,
 		//  while keeping track of the most-voted child.
-		for k, v := range votesAtHeight[i] {
-			block := gh.chain.Blocks[k]
-			// Propagate votes for child to parent
-			votesAtHeight[i-1][block.ParentHash] = votesAtHeight[i-1][block.ParentHash] + v
+		for block, w := range weightedBlocksAtHeight[i] {
+			// Propagate weight of child to parent
+			weightedBlocksAtHeight[i-1][block.Parent] = weightedBlocksAtHeight[i-1][block.Parent] + w
 			// keep track of the best child for this parent block
-			mapping, initialized := bestChildMapping[block.ParentHash]
-			if !initialized || v > mapping.ChildVotes {
-				bestChildMapping[block.ParentHash] = ChildScore{ChildHash: k, ChildVotes: v}
+			mapping, initialized := bestChildMapping[block.Parent]
+			if !initialized || w > mapping.ChildScore {
+				bestChildMapping[block.Parent] = ChildScore{Child: block, ChildScore: w}
 			}
 		}
 	}
 	// Now walk back from the root of the tree, picking the best child every step.
-	best := gh.chain.Justified
+	best := gh.dag.Start
 	for {
 		// Stop when we reach a leaf, the end of the tree
-		block := gh.chain.Blocks[best]
-		if len(block.Children) == 0 {
+		if len(best.Children) == 0 {
 			break
 		}
-		if bestChild, hasBest := bestChildMapping[best]; hasBest {
+		if bestChildData, hasBest := bestChildMapping[best]; hasBest {
 			// Pick the best child of the current best block
-			best = bestChild.ChildHash
+			best = bestChildData.Child
 		} else {
 			// just pick the first child if none of the children has received any attestation (making none the best)
-			best = block.Children[0].Hash
+			best = best.Children[0]
 		}
 	}
 
