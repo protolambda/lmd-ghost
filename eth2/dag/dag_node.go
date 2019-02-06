@@ -18,7 +18,10 @@ type DagNode struct {
 	//  and optimized access to this map from another point in the graph.
 	Weight int64
 
-	// TODO store extra data in dag itself, for different fork-choice implementations?
-	Extra interface{}
+	// Unused in some implementations
+	BestTarget *DagNode
+
+	// Unused in some implementations
+	IndexAsChild uint32
 
 }

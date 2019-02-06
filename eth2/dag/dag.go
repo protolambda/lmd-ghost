@@ -17,30 +17,50 @@ type BeaconDag struct {
 
 	// Aggegate, the effective "latest-targets", but every attestation is grouped by block.
 	agor attestations.AttestationsAggregator
+	synced bool
 
 	Nodes map[common.Hash256]*DagNode
-	lastAtID VoteIdentity
 
 	Start *DagNode
 }
 
 
 func (dag *BeaconDag) BlockIn(block *block.BeaconBlock) {
-	// TODO create node
+	dag.synced = false
+	// Create a node in the DAG for the block
+	node := &DagNode{
+		Parent: dag.Nodes[block.ParentHash],
+		// expected branch factor is 2 (??), capacity of 8 should be fine? (TODO)
+		Children: make([]*DagNode, 0, 8),
+		Key: block.Hash,
+		Slot: block.Slot,
+		Weight: 0,
+	}
+	// append to parent's children if there is a parent
+	if node.Parent != nil {
+		node.IndexAsChild = uint32(len(node.Parent.Children))
+		node.Parent.Children = append(node.Parent.Children, node)
+	}
+	dag.Nodes[block.Hash] = node
+	dag.ForkChoice.OnNewNode(node)
 }
 
 func (dag *BeaconDag) AttestationIn(atIn *attestation.Attestation) {
+	dag.synced = false
+	// input the attestation into the attestation aggregator.
 	dag.agor.AttestationIn(atIn)
 }
 
 func (dag *BeaconDag) SetStart(blockHash common.Hash256) {
+	dag.synced = false
 	newStart := dag.Nodes[blockHash]
-	dag.ForkChoice.StartIn(newStart)
+	dag.ForkChoice.OnStartChange(newStart)
 	// change old start after signifying the new start, the fork-choice gets an opportunity to retrieve both nodes.
 	dag.Start = newStart
 }
 
 func (dag *BeaconDag) SyncChanges() {
+	// Find all the changes made in the aggregator and apply them to the DAG.
 	changes := make([]fork_choice.ScoreChange, 0)
 	for k, v := range dag.agor.LatestAggregates {
 		if v.PrevWeight != v.Weight {
@@ -53,9 +73,15 @@ func (dag *BeaconDag) SyncChanges() {
 		}
 	}
 	dag.ForkChoice.ApplyScoreChanges(changes)
+	dag.synced = true
 }
 
 func (dag *BeaconDag) HeadFn() common.Hash256 {
+	// Make sure changes have been synced
+	if !dag.synced {
+		dag.SyncChanges()
+	}
+	// return the head
 	return dag.ForkChoice.HeadFn().Key
 }
 
