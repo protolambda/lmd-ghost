@@ -12,6 +12,7 @@ type DagNode struct {
 
 	Slot uint64
 
+	// Note: unused in some algorithms. E.g. spec implementation.
 	Weight int64
 
 	// TODO store extra data in dag itself, for different fork-choice implementations?

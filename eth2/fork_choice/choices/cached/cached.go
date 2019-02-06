@@ -1,7 +1,8 @@
 package cached
 
 import (
-	"lmd-ghost/sim"
+	"lmd-ghost/eth2/dag"
+	"lmd-ghost/eth2/fork_choice"
 )
 
 type CacheKey [32 + 4]uint8
@@ -15,35 +16,33 @@ func init() {
 	}
 }
 
-/// Just only the cache part of the implementation of vitalik
+/// Just only the cache part of the implementation of Vitalik
 type CachedLMDGhost struct {
 
-	chain *sim.SimChain
+	dag *dag.BeaconDag
 
-	cache map[CacheKey]sim.Hash256
+	LatestScores map[*dag.DagNode]int64
+
+	cache map[CacheKey]*dag.DagNode
 
 	// slot -> hash -> ancestor
-	ancestors map[uint8]map[sim.Hash256]sim.Hash256
+	ancestors map[uint8]map[*dag.DagNode]*dag.DagNode
 
-	maxKnownSlot uint32
+	maxKnownSlot uint64
 }
 
-func (gh *CachedLMDGhost) SetChain(chain *sim.SimChain) {
-	gh.chain = chain
-}
-
-func NewCachedLMDGhost() sim.ForkChoice {
+func NewCachedLMDGhost() fork_choice.ForkChoice {
 	res := new(CachedLMDGhost)
-	res.cache = make(map[CacheKey]sim.Hash256)
-	res.ancestors = make(map[uint8]map[sim.Hash256]sim.Hash256)
+	res.cache = make(map[CacheKey]*dag.DagNode)
+	res.ancestors = make(map[uint8]map[*dag.DagNode]*dag.DagNode)
 	for i := uint8(0); i < 16; i++ {
-		res.ancestors[i] = make(map[sim.Hash256]sim.Hash256)
+		res.ancestors[i] = make(map[*dag.DagNode]*dag.DagNode)
 	}
 	return res
 }
 
 /// The spec get_ancestor, but with caching, and skipping ahead logarithmically
-func (gh *CachedLMDGhost) getAncestor(block *sim.Block, slot uint32) *sim.Block {
+func (gh *CachedLMDGhost) getAncestor(block *dag.DagNode, slot uint64) *dag.DagNode {
 
 	if slot >= block.Slot {
 		if slot > block.Slot {
@@ -55,7 +54,7 @@ func (gh *CachedLMDGhost) getAncestor(block *sim.Block, slot uint32) *sim.Block 
 
 	// construct key
 	cacheKey := CacheKey{}
-	copy(cacheKey[:32], block.Hash[:])
+	copy(cacheKey[:32], block.Key[:])
 	cacheKey[32] = uint8(slot >> 24)
 	cacheKey[33] = uint8(slot >> 16)
 	cacheKey[34] = uint8(slot >> 8)
@@ -64,17 +63,16 @@ func (gh *CachedLMDGhost) getAncestor(block *sim.Block, slot uint32) *sim.Block 
 	// check cache
 	if res, ok := gh.cache[cacheKey]; ok {
 		// hit!
-		return gh.chain.Blocks[res]
+		return res
 	}
 
-	if x := gh.chain.Blocks[gh.ancestors[logz[block.Slot - slot - 1]][block.Hash]]; x == nil {
+	if x := gh.ancestors[logz[block.Slot - slot - 1]][block]; x == nil {
 		panic("Ancestors data is invalid")
 	}
 
 	// this will be the output
 	// skip ahead logarithmically to find the ancestor, and dive in recursively
-	skipHash := gh.ancestors[logz[block.Slot - slot - 1]][block.Hash]
-	skipBlock := gh.chain.Blocks[skipHash]
+	skipBlock := gh.ancestors[logz[block.Slot - slot - 1]][block]
 	o := gh.getAncestor(skipBlock, slot)
 
 	if o.Slot != slot {
@@ -82,21 +80,41 @@ func (gh *CachedLMDGhost) getAncestor(block *sim.Block, slot uint32) *sim.Block 
 	}
 
 	// cache this, so we never have to handle beyond this point again.
-	gh.cache[cacheKey] = o.Hash
+	gh.cache[cacheKey] = o
 
 	return o
 }
-func (gh *CachedLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.ValidatorID) {
-	// free, at cost of head-function.
+
+
+func (gh *CachedLMDGhost) SetDag(dag *dag.BeaconDag) {
+	gh.dag = dag
 }
 
-func (gh *CachedLMDGhost) BlockIn(block *sim.Block) {
+func (gh *CachedLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
+	for _, v := range changes {
+		gh.LatestScores[v.Target] += v.ScoreDelta
+	}
+	// delete targets that have a 0 score
+	for k, v := range gh.LatestScores {
+		if v == 0 {
+			// deletion during map iteration, safe in Go
+			delete(gh.LatestScores, k)
+		}
+	}
+}
+
+func (gh *CachedLMDGhost) OnNewNode(node *dag.DagNode) {
+	// free, at cost of head-function
+}
+
+
+func (gh *CachedLMDGhost) BlockIn(block *dag.DagNode) {
 	// update the ancestor data (used for logarithmic lookup)
 	for i := uint8(0); i < 16; i++ {
 		if block.Slot % (1 << i) == 0 {
-			gh.ancestors[i][block.Hash] = block.ParentHash
+			gh.ancestors[i][block] = block.Parent
 		} else {
-			gh.ancestors[i][block.Hash] = gh.ancestors[i][block.ParentHash]
+			gh.ancestors[i][block] = gh.ancestors[i][block.Parent]
 		}
 	}
 
@@ -106,22 +124,26 @@ func (gh *CachedLMDGhost) BlockIn(block *sim.Block) {
 	}
 }
 
+func (gh *CachedLMDGhost) OnStartChange(newStart *dag.DagNode) {
+	// nothing to do when the start changes
+}
+
 /// Retrieves the head by *recursively* looking for the highest voted block
 //   at *every* block in the path from start to head.
-func (gh *CachedLMDGhost) HeadFn() sim.Hash256 {
+func (gh *CachedLMDGhost) HeadFn() *dag.DagNode {
 	// Minor difference:
 	// Normally you would have to filter for the active validators, and get their targets.
-	// We can just iterate over the values in the sim-chain.
+	// We can just iterate over the values in the common-chain.
 	// This difference only really matters when there's many validators inactive,
 	//  and the client implementation doesn't store them separately.
 
-	head := gh.chain.Blocks[gh.chain.Justified]
+	head := gh.dag.Start
 	for {
 		if len(head.Children) == 0 {
-			return head.Hash
+			return head
 		}
 		bestItem := head.Children[0]
-		var bestScore uint32 = 0
+		var bestScore int64 = 0
 		for _, child := range head.Children {
 			childVotes := gh.getVoteCount(child)
 			if childVotes > bestScore {
@@ -133,12 +155,12 @@ func (gh *CachedLMDGhost) HeadFn() sim.Hash256 {
 	}
 }
 
-func (gh *CachedLMDGhost) getVoteCount(block *sim.Block) uint32 {
-	count := uint32(0)
-	for _, target := range gh.chain.Targets {
-		if anc := gh.getAncestor(gh.chain.Blocks[target], block.Slot); anc != nil && anc.Hash == block.Hash {
-			count++
+func (gh *CachedLMDGhost) getVoteCount(block *dag.DagNode) int64 {
+	totalWeight := int64(0)
+	for target, weight := range gh.LatestScores {
+		if anc := gh.getAncestor(target, block.Slot); anc != nil && anc == target {
+			totalWeight += weight
 		}
 	}
-	return count
+	return totalWeight
 }

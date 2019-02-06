@@ -11,9 +11,9 @@ type ScoreChange struct {
 
 type ForkChoice interface {
 	SetDag(dag *dag.BeaconDag)
-	NodeIn(block *dag.DagNode)
+	OnNewNode(node *dag.DagNode)
 	ApplyScoreChanges(changes []ScoreChange)
-	StartIn(newStart *dag.DagNode)
+	OnStartChange(newStart *dag.DagNode)
 	HeadFn() *dag.DagNode
 }
 
