@@ -3,11 +3,10 @@ package chain
 import (
 	"errors"
 	"fmt"
+	"lmd-ghost/eth2/attestations/attestation"
 	"lmd-ghost/eth2/block"
 	"lmd-ghost/eth2/common"
 	"lmd-ghost/eth2/dag"
-	"lmd-ghost/eth2/data/attestation"
-	"lmd-ghost/eth2/fork_choice"
 	"lmd-ghost/eth2/storage"
 )
 
@@ -68,14 +67,14 @@ func (ch *BeaconChain) BlockIn(block *block.BeaconBlock) error {
 	}
 
 	// determine the head
-	ch.ForkChoice.BlockIn(block)
-	ch.Head = ch.ForkChoice.HeadFn()
+	ch.Dag.BlockIn(block)
+	ch.Head = ch.Dag.HeadFn()
 
 	return nil
 }
 
 func (ch *BeaconChain) AttestationIn(attestation *attestation.Attestation) error {
 	// TODO verify attestation
-	ch.ForkChoice.AttestationIn(attestation)
+	ch.Dag.AttestationIn(attestation)
 	return nil
 }

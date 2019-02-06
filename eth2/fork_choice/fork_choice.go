@@ -1,18 +1,20 @@
 package fork_choice
 
 import (
-	"lmd-ghost/eth2/block"
-	"lmd-ghost/eth2/common"
 	"lmd-ghost/eth2/dag"
-	"lmd-ghost/eth2/data/attestation"
 )
+
+type ScoreChange struct {
+	Target *dag.DagNode
+	ScoreDelta int64
+}
 
 type ForkChoice interface {
 	SetDag(dag *dag.BeaconDag)
-	BlockIn(block *block.BeaconBlock)
-	AttestationIn(attestation *attestation.Attestation)
-	SetStart(blockHash common.Hash256)
-	HeadFn() common.Hash256
+	NodeIn(block *dag.DagNode)
+	ApplyScoreChanges(changes []ScoreChange)
+	StartIn(newStart *dag.DagNode)
+	HeadFn() *dag.DagNode
 }
 
 type ConstructForkChoice func() ForkChoice
