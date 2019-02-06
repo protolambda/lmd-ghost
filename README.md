@@ -30,6 +30,9 @@ TODO: graph results, for different parameter sets. (after/during discussion whic
 
 ## Implementations
 
+
+**NOTE: below descriptions are outdated: every implementation supports arbitrary weighting now, and batching is implemented. New write-up SOON**
+
 ### Spec implementation: `spec`
 
 The spec is very straightforward:

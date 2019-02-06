@@ -5,10 +5,7 @@ import (
 	"lmd-ghost/eth2/fork_choice"
 )
 
-func addVote(n *dag.DagNode) {
-	// increment the actual vote count
-	n.Weight += 1
-	//log.Printf("Added vote to %d, new count: %d\n", n.Block.Hash[0], n.Votes)
+func onAddWeight(n *dag.DagNode) {
 
 	// if we're not the best child of the parent, than we have a chance to become it.
 	if n.Parent != nil && n.IndexAsChild != 0 {
@@ -25,13 +22,9 @@ func addVote(n *dag.DagNode) {
 	}
 }
 
-func removeVote(n *dag.DagNode) {
-	// decrement the actual vote count
-	n.Weight -= 1
-	//log.Printf("Removed vote from %d, new count: %d\n", n.Block.Hash[0], n.Votes)
-
+func onRemoveWeight(n *dag.DagNode) {
 	if n.Weight < 0 {
-		panic("Warning: removed too many votes!")
+		panic("Error: removed too much weight! Weight of a node cannot be negative!")
 	}
 
 	// if we're the best child of the parent, than we have a chance to lose our position to the second best.
@@ -44,7 +37,7 @@ func removeVote(n *dag.DagNode) {
 				newBest = c
 			}
 		}
-		// check if we actually had to update the new-best
+		// check if we actually have to update the new-best
 		if newBest != n {
 			// we have been overthrown, now swap in the new best
 			n.Parent.Children[0] = newBest
@@ -80,6 +73,8 @@ type ProtolambdaLMDGhost struct {
 
 	dag *dag.BeaconDag
 
+	maxKnownSlot uint64
+
 }
 
 func NewProtolambdaLMDGhost() fork_choice.ForkChoice {
@@ -92,68 +87,29 @@ func (gh *ProtolambdaLMDGhost) SetDag(dag *dag.BeaconDag) {
 
 func (gh *ProtolambdaLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
 
-}
+	children := make([]*dag.DagNode, len(changes))
+	for i, v := range changes {
+		children[i] = v.Target
+	}
 
-//func (gh *ProtolambdaLMDGhost) AttestIn(blockHash sim.Hash256, attester sim.ValidatorID) {
-//
-//	// remove previous attest by validator, if there is any
-//	prevTarget, hasPrev := gh.chain.Targets[attester]
-//	//log.Println("=======================")
-//
-//	//for k, n := range gh.nodes {
-//	//	log.Printf("%d: %d\n", k[0], n.Votes)
-//	//}
-//	//log.Printf("Attesation: %d prev %d, by %d\n", blockHash[0], prevTarget[0], attester)
-//	if prevTarget == blockHash {
-//		// nothing to do, attest does not change vote
-//		return
-//	}
-//
-//	if hasPrev {
-//		// there is a previous attestation, that becomes invalid,
-//		// but it may share a path to the root, which could stay as-is regarding vote count,
-//		//  and possibly also regarding the bestTarget
-//		prevBranch := gh.nodes[prevTarget]
-//		newBranch := gh.nodes[blockHash]
-//		for {
-//			if prevBranch.Parent == newBranch.Parent {
-//				sharedParent := prevBranch.Parent
-//				// Check if prev-branch and new-branch are unconnected due to lack of history
-//				//  (edge case, if you prune not everything)
-//				if sharedParent == nil {
-//					// nothing to propagate up, we're done
-//					break
-//				}
-//
-//				oldBestTarget := sharedParent.BestTarget
-//				prevBranch.RemoveVote()
-//				newBranch.AddVote()
-//				// if the target changed, we have to propagate it,
-//				// but the vote count will stay the same (Sum of branches)
-//				if sharedParent.BestTarget != oldBestTarget {
-//					sharedParent.PropagateBestTargetUp()
-//				}
-//				break
-//			} else if prevBranch.Block.Slot > newBranch.Block.Slot {
-//				// Depending on the heights of the branches, we walk down.
-//				// Walk down the prev-branch
-//				prevBranch.RemoveVote()
-//				prevBranch = prevBranch.Parent
-//			} else {
-//				// Walk down the new-branch
-//				newBranch.AddVote()
-//				newBranch = newBranch.Parent
-//			}
-//		}
-//	} else {
-//		// just add the vote, and propagate back all the way, nothing else to do.
-//		n := gh.nodes[blockHash]
-//		for n != nil {
-//			n.AddVote()
-//			n = n.Parent
-//		}
-//	}
-//}
+	// TODO: implement cut-offs (if possible with arbitrary weights?) + dissolving between changes.
+	for _, v := range changes {
+		n := v.Target
+		// Propagate down the tree
+		for n != nil {
+			n.Weight += v.ScoreDelta
+			if v.ScoreDelta < 0 {
+				onRemoveWeight(n)
+			} else {
+				onAddWeight(n)
+			}
+			n = n.Parent
+			if n == nil {
+				break
+			}
+		}
+	}
+}
 
 func (gh *ProtolambdaLMDGhost) OnNewNode(node *dag.DagNode) {
 	// best end-target is the block itself
@@ -162,6 +118,10 @@ func (gh *ProtolambdaLMDGhost) OnNewNode(node *dag.DagNode) {
 		// If this is the only/first node that is added,
 		//  then it does not need attestations, it will just be the new target.
 		PropagateBestTargetUp(node)
+	}
+	// keep track of highest block
+	if node.Slot > gh.maxKnownSlot {
+		gh.maxKnownSlot = node.Slot
 	}
 }
 
