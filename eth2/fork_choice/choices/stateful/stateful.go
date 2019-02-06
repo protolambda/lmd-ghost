@@ -1,4 +1,4 @@
-package protolambda
+package stateful
 
 import (
 	"lmd-ghost/eth2/dag"
@@ -51,85 +51,101 @@ func onRemoveWeight(n *dag.DagNode) {
 	}
 }
 
-func PropagateBestTargetUp(n *dag.DagNode) {
-	// propagate the new best-target up, as far as necessary
-	p := n.Parent
-	c := n
-	for p != nil {
-		if c.IndexAsChild == 0 {
-			p.BestTarget = n.BestTarget
-			c = p
-			p = p.Parent
-		} else {
-			// stop propagating when the child is not the best child of the parent
-			break
-		}
-	}
-}
-
 /// A simple take on using a DAG for the fork-choice.
-/// Stores entries in DAG, but re-propagates target votes every time the head is computed.
-type ProtolambdaLMDGhost struct {
+/// Stores entries in DAG, and propagates target votes at the insertion time.
+type StatefulLMDGhost struct {
 
 	dag *dag.BeaconDag
 
-	maxKnownSlot uint64
-
+	head *dag.DagNode
 }
 
 func NewProtolambdaLMDGhost() fork_choice.ForkChoice {
-	return new(ProtolambdaLMDGhost)
+	return new(StatefulLMDGhost)
 }
 
-func (gh *ProtolambdaLMDGhost) SetDag(dag *dag.BeaconDag) {
+func (gh *StatefulLMDGhost) SetDag(dag *dag.BeaconDag) {
 	gh.dag = dag
 }
 
-func (gh *ProtolambdaLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
+func (gh *StatefulLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
 
 	children := make([]*dag.DagNode, len(changes))
+	// can be negative (i.e. attestation switch adjustment)
+	lowestDelta := int64(1 << 63 - 1)
+	nettoScoreChange := int64(0)
 	for i, v := range changes {
 		children[i] = v.Target
+		if v.ScoreDelta < lowestDelta {
+			lowestDelta = v.ScoreDelta
+		}
+		nettoScoreChange += v.ScoreDelta
 	}
+	// cutOff = (old total weight + netto change) / 2
+	// cutOff2 = old total weight + netto change   (i.e., cutoff x 2)
+	// weight of start point before changes = total old weight
+	cutOff2 := gh.dag.Start.Weight + nettoScoreChange
 
-	// TODO: implement cut-offs (if possible with arbitrary weights?) + dissolving between changes.
+	// TODO: implement dissolving between changes.
+
+	// back-propagation cut-off strategy:
+	// If n has sufficient weight to not lose its position on the canonical chain (i.e. n.Weight + v.Score > totalWeight / 2 + possible change)
+	// Then the target will stay the same during this ApplyScoreChanges. Just propagate the weight adjustment.
 	for _, v := range changes {
 		n := v.Target
 		// Propagate down the tree
 		for n != nil {
 			n.Weight += v.ScoreDelta
+			// less possible change = better cutoff!
+			cutOff2 -= v.ScoreDelta
 			if v.ScoreDelta < 0 {
 				onRemoveWeight(n)
 			} else {
 				onAddWeight(n)
 			}
+			if (n.Weight << 1) > cutOff2 {
+				target := n.BestTarget
+				n = n.Parent
+				for n != nil {
+					n.BestTarget = target
+					n.Weight += v.ScoreDelta
+					n = n.Parent
+				}
+				break
+			}
 			n = n.Parent
-			if n == nil {
+		}
+	}
+}
+
+func (gh *StatefulLMDGhost) OnNewNode(node *dag.DagNode) {
+	// best end-target is the block itself
+	node.BestTarget = node
+	if node.Parent != nil && len(node.Parent.Children) == 1 {
+		// If this is the only/first node that is added,
+		//  then it does not need attestations, it will just be the new target.
+
+		// propagate the new best-target up, as far as necessary
+		p := node.Parent
+		c := node
+		for p != nil {
+			if c.IndexAsChild == 0 {
+				p.BestTarget = node.BestTarget
+				c = p
+				p = p.Parent
+			} else {
+				// stop propagating when the child is not the best child of the parent
 				break
 			}
 		}
 	}
 }
 
-func (gh *ProtolambdaLMDGhost) OnNewNode(node *dag.DagNode) {
-	// best end-target is the block itself
-	node.BestTarget = node
-	if node.Parent != nil && len(node.Parent.Children) == 1 {
-		// If this is the only/first node that is added,
-		//  then it does not need attestations, it will just be the new target.
-		PropagateBestTargetUp(node)
-	}
-	// keep track of highest block
-	if node.Slot > gh.maxKnownSlot {
-		gh.maxKnownSlot = node.Slot
-	}
-}
-
-func (gh *ProtolambdaLMDGhost) OnStartChange(newStart *dag.DagNode) {
+func (gh *StatefulLMDGhost) OnStartChange(newStart *dag.DagNode) {
 	// nothing to do when the start changes
 }
 
-func (gh *ProtolambdaLMDGhost) HeadFn() *dag.DagNode {
+func (gh *StatefulLMDGhost) HeadFn() *dag.DagNode {
 	// All the work has already been done, just pick the best-target of the root node.
 	// *Bonus*: And this works for *every* node in the graph!
 	// Changing the root is costless

@@ -49,7 +49,7 @@ func (gh *SimpleBackPropLMDGhost) OnStartChange(newStart *dag.DagNode) {
 }
 
 type ChildScore struct {
-	Child *dag.DagNode
+	BestTarget *dag.DagNode
 	ChildScore int64
 }
 
@@ -59,40 +59,46 @@ func (gh *SimpleBackPropLMDGhost) HeadFn() *dag.DagNode {
 	for i := uint64(0); i <= gh.maxKnownSlot; i++ {
 		weightedBlocksAtHeight[i] = make(map[*dag.DagNode]int64)
 	}
+	// compute cutoff: sum all scores, and divide by 2.
+	cutOff := int64(0)
 	// put all initial weights in the "DAG" (or tree, if non-justified roots would be removed)
 	for t, w := range gh.LatestScores {
 		weightedBlocksAtHeight[t.Slot][t] = weightedBlocksAtHeight[t.Slot][t] + w
+		cutOff += w
 	}
+	cutOff /= 2
 	bestChildMapping := make(map[*dag.DagNode]ChildScore)
 	// Now back-propagate, per slot height
 	for i := gh.maxKnownSlot; i > 0; i-- {
 		// Propagate all higher-slot votes back to the root of the tree,
 		//  while keeping track of the most-voted child.
 		for block, w := range weightedBlocksAtHeight[i] {
+			// check for cutOff, if the block weight is heavy enough, then we can just stop at this block, and use the bestChildMapping to get the final head.
+			if w > cutOff {
+				if myBest, hasBest := bestChildMapping[block]; hasBest {
+					return myBest.BestTarget
+				} else {
+					return block
+				}
+			}
 			// Propagate weight of child to parent
 			weightedBlocksAtHeight[i-1][block.Parent] = weightedBlocksAtHeight[i-1][block.Parent] + w
 			// keep track of the best child for this parent block
 			mapping, initialized := bestChildMapping[block.Parent]
 			if !initialized || w > mapping.ChildScore {
-				bestChildMapping[block.Parent] = ChildScore{Child: block, ChildScore: w}
+				if myBest, hasBest := bestChildMapping[block]; hasBest {
+					// inherit the best-target if there is one
+					bestChildMapping[block.Parent] = ChildScore{BestTarget: myBest.BestTarget, ChildScore: w}
+				} else {
+					// otherwise just put this node as the best target, if it has no entry in the bestChildMapping, then the node has no children
+					bestChildMapping[block.Parent] = ChildScore{BestTarget: block, ChildScore: w}
+				}
 			}
 		}
 	}
-	// Now walk back from the root of the tree, picking the best child every step.
-	best := gh.dag.Start
-	for {
-		// Stop when we reach a leaf, the end of the tree
-		if len(best.Children) == 0 {
-			break
-		}
-		if bestChildData, hasBest := bestChildMapping[best]; hasBest {
-			// Pick the best child of the current best block
-			best = bestChildData.Child
-		} else {
-			// just pick the first child if none of the children has received any attestation (making none the best)
-			best = best.Children[0]
-		}
+	if myBest, hasBest := bestChildMapping[gh.dag.Start]; hasBest {
+		return myBest.BestTarget
+	} else {
+		return gh.dag.Start
 	}
-
-	return best
 }

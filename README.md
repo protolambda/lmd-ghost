@@ -6,9 +6,10 @@ Implementations:
 
 - Naive but readable spec implementation, original in Python/pseudocode [here](https://github.com/ethereum/eth2.0-specs/blob/master/specs/core/0_beacon-chain.md#beacon-chain-fork-choice-rule)
 - Cached spec, similar to the spec, but with the cache feature from the implementation by Vitalik.
-- Optimized LMD-GHOST by Vitalik Buterin, original in Python [here](https://github.com/ethereum/research/blob/master/ghost/ghost.py)
-- Simple attestation-backpropagation DAG, by @protolambda.
-- Stateful sum-vote DAG with propagation cut-off, by @protolambda.
+- Optimized LMD-GHOST by Vitalik Buterin, slightly modified to fit spec, original in Python [here](https://github.com/ethereum/research/blob/master/ghost/ghost.py)
+- Simple attestation-backpropagation DAG with best-target inherit, and majority cut-off, by @protolambda.
+- Stateful DAG with partial propagation cut-off, by @protolambda.
+- Sum-vote DAG by @protolambda, removed (but previously implemented) in favor of arbitrary attestation weights. See below.
 - Suggestions welcome!
 
 
@@ -79,26 +80,72 @@ These include:
 > Note: I'm calling it a DAG, since pruning could be slot-based, which would means nodes older than the justified slot are thrown out,
  splitting the initial tree in separate disconnected trees. Non-canonical components in the DAG will eventually be pruned.
 
-Another way to handle votes is to focus more on the "DAG": every block is a node, with one input (parent block), and children (blocks having the node as parent).
+Another way to handle weight changes is to focus more on the "DAG": every block is a node, with one input (parent block), and children (blocks having the node as parent).
 So to find the best path, all we need to do is:
  
-1. propagate the attestations from the leaf nodes, up to the root of the DAG (justified block).
+1. Propagate the weights from the target nodes, up to the root of the DAG (justified block).
 2. Propagation is just adding the votes for the child-nodes, and updating the vote-count for the node having these children.
 
-And then there are two optimizations:
+And then there are a few optimizations:
 
-1. When propagating up, we iterate over every child anyway, so we might as well remember the best child of the node.
-2. When propagating up, we can batch changes per height. I.e. first process the maximum known height, then one height up, and so on: every node will only be touched once.
+1. Best-target inheritance: When propagating up, we iterate over every child anyway, so we might as well remember the best-target of the node. (best-target being the hypothetical head, if this node would be part of the canonical chain).
+2. Batch by-Height: When propagating up, we can batch changes per height. I.e. first process the maximum known height, then one height up, and so on: every node will only be touched once.
+3. Majority cut-off: if we reach a node that is weighted higher than half of the DAG, we can stop all the work, and return its best-target. This prevents us from going back far in time in long chains.
 
 The first optimization could be extended: we can propagate the best target (i.e. leaf node) as well. So we don't have to walk back, we can just pick the best leaf from the start.
 This is done in the below more advanced implementation.
 
+### State-ful DAG
 
-### Stateful sum-vote DAG with propagation cut-off: `protolambda`
+This is the port of the below sum-vote DAG, to support aggregation of attestations, and arbitrary weighting.
+However, due to the nature of the approach, most of the previous optimizations could not be ported.
 
-A different approach to LMD-GHOST by @protolambda.
+This approach keeps track of the scores in the DAG itself, not in the computation function of the HEAD.
 
-The real trade-off between computation-time when adding attestations, and determining the head.
+The primary benefit of this approach is the full information you have about *every block in the DAG*, without losing too much of the performance.
+This information includes:
+- LMD-GHOST weight
+- Best child-node of any node in the dag.
+- Best target-node of any node in the dag.
+
+Head-lookup is simply `O(1)`: get the best target node for the starting node.
+
+#### Tradeoffs
+
+To achieve `O(1)` during the "computation" of the head, insertions have to be processed to update the state.
+
+Computation:
+- Insertions of score changes are propagated back towards the root of the DAG. Batching/aggregation helps a lot here to reduce workload.
+- Insertions of blocks trigger a propagation of the best-target.
+ This cuts off as soon as a node in the path towards the root node is not the best child of its parent node.
+
+#### Optimizations
+
+The primary operation cost in the DAG is to check if a child node becomes the best child node, or the opposite (if the best child node is not the best anymore).
+Although these operations themselves are optimized with quick swapping / timely checks, it is good to avoid.
+By checking for a majority weight (i.e. `node Weight + change in Score > total dag Weight / 2 + possible change`) during back-propagation of weight changes,
+ we can determine that the best-target will not change anymore during further propagation, and only the weight adjustment needs to be propagated further.
+
+Often, an attestation moves up one or more blocks on the same branch, and may not change in weight.
+This can be quickly recognized, as the best-target would not be different between the two attested nodes.
+In such situation, it is easy to only apply a partial back-propagation, up to the point where both can be combined.
+If the combined weight cancels out, further back-propagation can be avoided. But the combination can already be regarded as a win.
+
+More advanced dissolving (i.e. combine two changes into none) optimizations from the previous version of this algorithm could not be ported, due to the aggregation going on,
+ and weighting generally making dissolving less likely. However, one could still try to optimize for combining two changes at two different targets,
+  into one change once the back-propagation of these targets hits the fork between the two.
+
+
+### Sum-vote DAG with propagation cut-off
+
+*Documented here for archiving purposes.*
+
+Previously we did not consider weighting (e.g. balances of attesters) or aggregating (similar to weighting, but no single attester identity behind a vote change).
+
+This approach is a big trade-off between computation-time when adding attestations, and determining the head.
+The optimizations largely benefit from the small atomic changes in non-weighted non-aggregated LMD-GHOST.
+To the point where the approach itself wins from any optimization you could make to the non-stateful approaches, in this version of LMD-GHOST.
+Unfortunately, aggregation is critical for larger networks, hence this approach is deprecated.
 
 #### The benefits
 
@@ -135,7 +182,8 @@ Adding blocks is also slightly more costly, since we have to account for target 
 Again, we can propagate this the same way as we propagated the best-target change in the `-1 +1` case, and cut-off at some point if the block is not the new head.
 
 Overall this data-structure works really well when validators don't change their attestation by much, which is incentivized by the slashing conditions.
-Either die hard and keep building your own chain, or stay as close as possible to the head.
+Either die hard and keep building your own chain (change in attestations dissolved very quick),
+ or stay as close as possible to the head (change in attestation dissolved reasonably quick).
 
 
 ### Your algorithm?
