@@ -29,7 +29,7 @@ type VitaliksOptimizedLMDGhost struct {
 
 	dag *dag.BeaconDag
 
-	LatestScores map[*dag.DagNode]int64
+	latestScores map[*dag.DagNode]int64
 
 	cache map[CacheKey]*dag.DagNode
 
@@ -39,29 +39,29 @@ type VitaliksOptimizedLMDGhost struct {
 	maxKnownSlot uint64
 }
 
-func NewVitaliksOptimizedLMDGhost() fork_choice.ForkChoice {
-	res := new(VitaliksOptimizedLMDGhost)
-	res.cache = make(map[CacheKey]*dag.DagNode)
-	res.ancestors = make(map[uint8]map[*dag.DagNode]*dag.DagNode)
+func NewVitaliksOptimizedLMDGhost(d *dag.BeaconDag) fork_choice.ForkChoice {
+	res := &VitaliksOptimizedLMDGhost{
+		dag: d,
+		latestScores: make(map[*dag.DagNode]int64),
+		cache: make(map[CacheKey]*dag.DagNode),
+		ancestors: make(map[uint8]map[*dag.DagNode]*dag.DagNode),
+		maxKnownSlot: 0,
+	}
 	for i := uint8(0); i < 16; i++ {
 		res.ancestors[i] = make(map[*dag.DagNode]*dag.DagNode)
 	}
 	return res
 }
 
-func (gh *VitaliksOptimizedLMDGhost) SetDag(dag *dag.BeaconDag) {
-	gh.dag = dag
-}
-
 func (gh *VitaliksOptimizedLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
 	for _, v := range changes {
-		gh.LatestScores[v.Target] += v.ScoreDelta
+		gh.latestScores[v.Target] += v.ScoreDelta
 	}
 	// delete targets that have a 0 score
-	for k, v := range gh.LatestScores {
+	for k, v := range gh.latestScores {
 		if v == 0 {
 			// deletion during map iteration, safe in Go
-			delete(gh.LatestScores, k)
+			delete(gh.latestScores, k)
 		}
 	}
 }
@@ -161,7 +161,7 @@ func (gh *VitaliksOptimizedLMDGhost) HeadFn() *dag.DagNode {
 	// Modification from original: we keep track of total attestation-score per target block, instead of all attestations.
 	// Hence, we can just copy the map.
 	latestVotes := make(map[*dag.DagNode]int64)
-	for t, w := range gh.LatestScores {
+	for t, w := range gh.latestScores {
 		// Copy weight
 		latestVotes[t] = w
 	}

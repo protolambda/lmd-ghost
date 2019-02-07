@@ -10,11 +10,10 @@ type ScoreChange struct {
 }
 
 type ForkChoice interface {
-	SetDag(dag *dag.BeaconDag)
 	OnNewNode(node *dag.DagNode)
 	ApplyScoreChanges(changes []ScoreChange)
 	OnStartChange(newStart *dag.DagNode)
 	HeadFn() *dag.DagNode
 }
 
-type ConstructForkChoice func() ForkChoice
+type InitForkChoice func(dag *dag.BeaconDag) ForkChoice

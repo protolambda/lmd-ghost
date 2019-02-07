@@ -9,17 +9,17 @@ import (
 //  making it easier to integrate the advanced parts like fork-choice etc. into a real client.
 type BeaconStorage struct {
 
-	block.BlockStorage
+	Blocks block.BlockStorage
 
-	state.StateStorage
+	States state.StateStorage
 }
 
 func NewBeaconStorage() *BeaconStorage {
 	// create storage
 	res := new(BeaconStorage)
 	// inititalize all storage facilities
-	res.BlockStorage.Init()
-	res.StateStorage.Init()
+	res.Blocks.Init()
+	res.States.Init()
 
 	return res
 }

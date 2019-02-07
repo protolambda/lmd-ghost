@@ -28,7 +28,7 @@ type Simulation struct {
 	Chain *chain.BeaconChain
 }
 
-func NewChain(validatorCount int, forkChoice fork_choice.ForkChoice) *Simulation {
+func NewSimulation(validatorCount int, initForkChoice fork_choice.InitForkChoice) *Simulation {
 	if validatorCount % EPOCH_LENGTH != 0 {
 		panic("validator count should be nicely divisible by the epoch-length in this simulation.")
 	}
@@ -48,7 +48,7 @@ func NewChain(validatorCount int, forkChoice fork_choice.ForkChoice) *Simulation
 		genesisState.ValidatorRegistry[i] = &validator.Validator{Id: common.ValidatorID(i), Balance: 10}
 	}
 
-	ch, err := chain.NewBeaconChain(genesisBlock, genesisState, forkChoice)
+	ch, err := chain.NewBeaconChain(genesisBlock, genesisState, initForkChoice)
 	if err != nil {
 		panic("Failed to initialize chain for simulation.")
 	}

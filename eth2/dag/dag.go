@@ -24,12 +24,12 @@ type BeaconDag struct {
 	Start *DagNode
 }
 
-func NewBeaconDag(forkChoice fork_choice.ForkChoice) *BeaconDag {
+func NewBeaconDag(initForkChoice fork_choice.InitForkChoice) *BeaconDag {
 	res := &BeaconDag{
-		ForkChoice: forkChoice,
 		synced: false,
 		Nodes: make(map[common.Hash256]*DagNode),
 	}
+	res.ForkChoice = initForkChoice(res)
 	res.agor = attestations.NewAttestationsAggregator(func(blockHash common.Hash256) uint64 {
 		return res.Nodes[blockHash].Slot
 	})
@@ -41,6 +41,7 @@ func (dag *BeaconDag) BlockIn(block *block.BeaconBlock) {
 	// Create a node in the DAG for the block
 	node := &DagNode{
 		Parent: dag.Nodes[block.ParentHash],
+		Proposer: block.Proposer,
 		// expected branch factor is 2 (??), capacity of 8 should be fine? (TODO)
 		Children: make([]*DagNode, 0, 8),
 		Key: block.Hash,

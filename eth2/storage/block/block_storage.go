@@ -11,8 +11,9 @@ type BlockStorage struct {
 
 }
 
-func (st *BlockStorage) Init() {
-	st.blocks = make(map[common.Hash256]*block.BeaconBlock)
+func NewBlockStorage() *BlockStorage {
+	res := &BlockStorage{blocks: make(map[common.Hash256]*block.BeaconBlock)}
+	return res
 }
 
 func (st *BlockStorage) GetBlock(blockHash common.Hash256) (*block.BeaconBlock, error) {

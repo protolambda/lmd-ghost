@@ -21,7 +21,7 @@ type CachedLMDGhost struct {
 
 	dag *dag.BeaconDag
 
-	LatestScores map[*dag.DagNode]int64
+	latestScores map[*dag.DagNode]int64
 
 	cache map[CacheKey]*dag.DagNode
 
@@ -31,10 +31,14 @@ type CachedLMDGhost struct {
 	maxKnownSlot uint64
 }
 
-func NewCachedLMDGhost() fork_choice.ForkChoice {
-	res := new(CachedLMDGhost)
-	res.cache = make(map[CacheKey]*dag.DagNode)
-	res.ancestors = make(map[uint8]map[*dag.DagNode]*dag.DagNode)
+func NewCachedLMDGhost(d *dag.BeaconDag) fork_choice.ForkChoice {
+	res := &CachedLMDGhost{
+		dag:          d,
+		latestScores: make(map[*dag.DagNode]int64),
+		cache: make(map[CacheKey]*dag.DagNode),
+		ancestors: make(map[uint8]map[*dag.DagNode]*dag.DagNode),
+		maxKnownSlot: 0,
+	}
 	for i := uint8(0); i < 16; i++ {
 		res.ancestors[i] = make(map[*dag.DagNode]*dag.DagNode)
 	}
@@ -85,20 +89,15 @@ func (gh *CachedLMDGhost) getAncestor(block *dag.DagNode, slot uint64) *dag.DagN
 	return o
 }
 
-
-func (gh *CachedLMDGhost) SetDag(dag *dag.BeaconDag) {
-	gh.dag = dag
-}
-
 func (gh *CachedLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
 	for _, v := range changes {
-		gh.LatestScores[v.Target] += v.ScoreDelta
+		gh.latestScores[v.Target] += v.ScoreDelta
 	}
 	// delete targets that have a 0 score
-	for k, v := range gh.LatestScores {
+	for k, v := range gh.latestScores {
 		if v == 0 {
 			// deletion during map iteration, safe in Go
-			delete(gh.LatestScores, k)
+			delete(gh.latestScores, k)
 		}
 	}
 }
@@ -169,7 +168,7 @@ func (gh *CachedLMDGhost) HeadFn() *dag.DagNode {
 
 func (gh *CachedLMDGhost) getVoteCount(block *dag.DagNode) int64 {
 	totalWeight := int64(0)
-	for target, weight := range gh.LatestScores {
+	for target, weight := range gh.latestScores {
 		if anc := gh.getAncestor(target, block.Slot); anc != nil && anc == target {
 			totalWeight += weight
 		}

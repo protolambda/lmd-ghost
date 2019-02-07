@@ -10,26 +10,26 @@ type SpecLMDGhost struct {
 
 	dag *dag.BeaconDag
 
-	LatestScores map[*dag.DagNode]int64
+	latestScores map[*dag.DagNode]int64
 }
 
-func NewSpecLMDGhost() fork_choice.ForkChoice {
-	return new(SpecLMDGhost)
-}
-
-func (gh *SpecLMDGhost) SetDag(dag *dag.BeaconDag) {
-	gh.dag = dag
+func NewSpecLMDGhost(d *dag.BeaconDag) fork_choice.ForkChoice {
+	res := &SpecLMDGhost{
+		dag:          d,
+		latestScores: make(map[*dag.DagNode]int64),
+	}
+	return res
 }
 
 func (gh *SpecLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
 	for _, v := range changes {
-		gh.LatestScores[v.Target] += v.ScoreDelta
+		gh.latestScores[v.Target] += v.ScoreDelta
 	}
 	// delete targets that have a 0 score
-	for k, v := range gh.LatestScores {
+	for k, v := range gh.latestScores {
 		if v == 0 {
 			// deletion during map iteration, safe in Go
-			delete(gh.LatestScores, k)
+			delete(gh.latestScores, k)
 		}
 	}
 }
@@ -71,7 +71,7 @@ func (gh *SpecLMDGhost) HeadFn() *dag.DagNode {
 
 func (gh *SpecLMDGhost) getVoteCount(block *dag.DagNode) int64 {
 	totalWeight := int64(0)
-	for target, weight := range gh.LatestScores {
+	for target, weight := range gh.latestScores {
 		if anc := gh.getAncestor(target, block.Slot); anc != nil && anc == target {
 			totalWeight += weight
 		}

@@ -12,8 +12,9 @@ type StateStorage struct {
 
 }
 
-func (st *StateStorage) Init() {
-	st.states = make(map[common.Hash256]*state.BeaconState)
+func NewStateStorage() *StateStorage {
+	res := &StateStorage{states: make(map[common.Hash256]*state.BeaconState)}
+	return res
 }
 
 // returns the post-state of a block. Changes are to the state are not persisted without PutPostState()

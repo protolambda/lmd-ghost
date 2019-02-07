@@ -25,11 +25,11 @@ type BeaconChain struct {
 
 }
 
-func NewBeaconChain(genesisBlock *block.BeaconBlock, genesisState *state.BeaconState, forkChoice fork_choice.ForkChoice) (*BeaconChain, error) {
+func NewBeaconChain(genesisBlock *block.BeaconBlock, genesisState *state.BeaconState, initForkChoice fork_choice.InitForkChoice) (*BeaconChain, error) {
 	res := &BeaconChain{
 		Head: genesisBlock.Hash,
 		Storage: storage.NewBeaconStorage(),
-		Dag: dag.NewBeaconDag(forkChoice),
+		Dag: dag.NewBeaconDag(initForkChoice),
 	}
 	if err := res.Storage.PutBlock(genesisBlock); err != nil {
 		return nil, err
@@ -100,6 +100,7 @@ func (ch *BeaconChain) BlockIn(block *block.BeaconBlock) error {
 
 func (ch *BeaconChain) AttestationIn(attestation *attestation.Attestation) error {
 	// TODO verify attestation
+	// TODO real implementation would save the attestation, for later slashing etc.
 	ch.Dag.AttestationIn(attestation)
 	return nil
 }

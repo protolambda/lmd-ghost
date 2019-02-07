@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
-	"lmd-ghost/choices/cached"
-	"lmd-ghost/choices/protolambda"
-	"lmd-ghost/choices/simple_back_prop"
-	"lmd-ghost/choices/spec"
-	"lmd-ghost/choices/vitalik"
+	"lmd-ghost/eth2/fork_choice"
+	"lmd-ghost/eth2/fork_choice/choices/cached"
+	"lmd-ghost/eth2/fork_choice/choices/simple_back_prop"
+	"lmd-ghost/eth2/fork_choice/choices/spec"
+	"lmd-ghost/eth2/fork_choice/choices/stateful"
+	"lmd-ghost/eth2/fork_choice/choices/vitalik"
 	"lmd-ghost/sim"
 	"lmd-ghost/viz"
 	"log"
@@ -23,37 +24,43 @@ func track(s string, startTime time.Time) {
 	log.Println("End:	", s, "took", endTime.Sub(startTime))
 }
 
-var forkRules = map[string]sim.GetForkChoice {
+var forkRules = map[string]fork_choice.InitForkChoice {
 	"spec": spec.NewSpecLMDGhost,
 	"vitalik": vitalik.NewVitaliksOptimizedLMDGhost,
 	"cached": cached.NewCachedLMDGhost,
 	"simple-back-prop": simple_back_prop.NewSimpleBackPropLMDGhost,
-	"protolambda": protolambda.NewProtolambdaLMDGhost,
+	"stateful": stateful.NewStatefulLMDGhost,
 }
 
 
 // TODO parametrize latency, simulated attestations per block, and slot-skip
-func runSim(blocks int, validatorCount int, name string) {
+func runSim(blocks int, validatorCount int, attestationsPerBlock int, name string) {
 	simName := fmt.Sprintf("%s__%d_blocks__%d_validators", name, blocks, validatorCount)
 	defer track(runningtime(simName))
-	getForkChoice := forkRules[name]
-	forkChoice := getForkChoice()
-	chain := sim.NewChain(validatorCount, forkChoice)
-	forkChoice.SetChain(chain)
+	initForkChoice := forkRules[name]
+	s := sim.NewSimulation(validatorCount, initForkChoice)
+	// log every 5% of the simulated amount of blocks
 	logInterval := blocks / 20
+	// update the head 10 times during attestation processing.
+	headUpdateInterval := attestationsPerBlock / 10
+	attestationCounter := 0
 	for n := 0; n < blocks; n++ {
 		if n % logInterval == 0 {
-			log.Printf("total %d blocks, head at slot: %d\n", len(chain.Blocks), chain.Blocks[chain.Head].Slot)
+			log.Printf("total %d blocks, head at slot: %d, processed %d attestations.\n", len(s.Chain.Dag.Nodes), s.Chain.Dag.Nodes[s.Chain.Head].Slot, attestationCounter)
 		}
-		chain.SimNewBlock()
-		for a := 0; a < 100; a++ {
-			chain.SimNewAttestation()
+		for a := 0; a < attestationsPerBlock; a++ {
+			s.SimNewAttestation()
+			if a % headUpdateInterval == headUpdateInterval - 1 {
+				s.Chain.UpdateHead()
+			}
 		}
-		chain.UpdateHead()
+		attestationCounter += attestationsPerBlock
+		// head will update after adding a block
+		s.SimNewBlock()
 	}
-	viz.CreateVizGraph("out/" + simName, chain)
+	viz.CreateVizGraph("out/" + simName, s.Chain)
 }
 
 func main()  {
-	runSim(10000, 64*10, "protolambda")
+	runSim(100, 64*10, 1000, "stateful")
 }

@@ -13,26 +13,27 @@ type SimpleBackPropLMDGhost struct {
 
 	maxKnownSlot uint64
 
-	LatestScores map[*dag.DagNode]int64
+	latestScores map[*dag.DagNode]int64
 }
 
-func NewSimpleBackPropLMDGhost() fork_choice.ForkChoice {
-	return new(SimpleBackPropLMDGhost)
-}
-
-func (gh *SimpleBackPropLMDGhost) SetDag(dag *dag.BeaconDag) {
-	gh.dag = dag
+func NewSimpleBackPropLMDGhost(d *dag.BeaconDag) fork_choice.ForkChoice {
+	res := &SimpleBackPropLMDGhost{
+		dag:          d,
+		latestScores: make(map[*dag.DagNode]int64),
+		maxKnownSlot: 0,
+	}
+	return res
 }
 
 func (gh *SimpleBackPropLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
 	for _, v := range changes {
-		gh.LatestScores[v.Target] += v.ScoreDelta
+		gh.latestScores[v.Target] += v.ScoreDelta
 	}
 	// delete targets that have a 0 score
-	for k, v := range gh.LatestScores {
+	for k, v := range gh.latestScores {
 		if v == 0 {
 			// deletion during map iteration, safe in Go
-			delete(gh.LatestScores, k)
+			delete(gh.latestScores, k)
 		}
 	}
 }
@@ -62,7 +63,7 @@ func (gh *SimpleBackPropLMDGhost) HeadFn() *dag.DagNode {
 	// compute cutoff: sum all scores, and divide by 2.
 	cutOff := int64(0)
 	// put all initial weights in the "DAG" (or tree, if non-justified roots would be removed)
-	for t, w := range gh.LatestScores {
+	for t, w := range gh.latestScores {
 		weightedBlocksAtHeight[t.Slot][t] = weightedBlocksAtHeight[t.Slot][t] + w
 		cutOff += w
 	}

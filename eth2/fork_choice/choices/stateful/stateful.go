@@ -57,15 +57,13 @@ type StatefulLMDGhost struct {
 
 	dag *dag.BeaconDag
 
-	head *dag.DagNode
 }
 
-func NewProtolambdaLMDGhost() fork_choice.ForkChoice {
-	return new(StatefulLMDGhost)
-}
-
-func (gh *StatefulLMDGhost) SetDag(dag *dag.BeaconDag) {
-	gh.dag = dag
+func NewStatefulLMDGhost(d *dag.BeaconDag) fork_choice.ForkChoice {
+	res := &StatefulLMDGhost{
+		dag:          d,
+	}
+	return res
 }
 
 func (gh *StatefulLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
