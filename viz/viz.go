@@ -3,22 +3,25 @@ package viz
 import (
 	"encoding/csv"
 	"fmt"
-	"lmd-ghost/sim"
+	"lmd-ghost/eth2/chain"
+	"log"
 	"os"
 )
 
-func CreateVizGraph(path string, chain *sim.SimChain) {
-	writeNodesCSV(path + ".nodes.csv", chain)
-	writeEdgesCSV(path + ".edges.csv", chain)
+func CreateVizGraph(path string, ch *chain.BeaconChain) {
+	writeNodesCSV(path + ".nodes.csv", ch)
+	writeEdgesCSV(path + ".edges.csv", ch)
 }
 
 func check(err error, msg string) {
 	if err != nil {
+		// TODO combine error + extra msg in a nice way
+		log.Println(msg)
 		panic(err)
 	}
 }
 
-func writeNodesCSV(path string, chain *sim.SimChain) {
+func writeNodesCSV(path string, ch *chain.BeaconChain) {
 	file, err := os.Create(path)
 	check(err, "Could not create nodes-CSV file")
 
@@ -26,13 +29,17 @@ func writeNodesCSV(path string, chain *sim.SimChain) {
 
 	check(writer.Write([]string{"ID","Label","Slot","x","Proposer","BlockType"}), "failed to write nodes-CSV header")
 
-	for hash, block := range chain.Blocks {
-		id := hashToHexStr(hash)
+	for hash := range ch.Dag.Nodes {
+		id := hash.String()
 		blockType := "normal"
-		if hash == chain.Head {
+		if hash == ch.Head {
 			blockType = "head"
-		} else if hash == chain.Justified {
+		} else if hash == ch.Dag.Start.Key {
 			blockType = "justified"
+		}
+		block, err := ch.Storage.GetBlock(hash)
+		if err != nil {
+			panic("Could not find block from DAG in storage")
 		}
 		check(writer.Write([]string{
 			id, id, // id and label
@@ -41,14 +48,14 @@ func writeNodesCSV(path string, chain *sim.SimChain) {
 			fmt.Sprintf("%d", block.Proposer),
 			blockType,
 			// TODO maybe also add votes to graph?
-			//  (Problem: would require protolambda LMD-GHOST version, doesn't work for others)
+			//  (Problem: would require stateful LMD-GHOST version, doesn't work for others)
 		}), "failed to write CSV node for block " + id)
 	}
 	writer.Flush()
 	check(file.Close(), "could not close nodes-CSV file")
 }
 
-func writeEdgesCSV(path string, chain *sim.SimChain) {
+func writeEdgesCSV(path string, ch *chain.BeaconChain) {
 	file, err := os.Create(path)
 	check(err, "Could not create edges-CSV file")
 
@@ -56,11 +63,11 @@ func writeEdgesCSV(path string, chain *sim.SimChain) {
 
 	check(writer.Write([]string{"Source","Target"}), "failed to write edges-CSV header")
 
-	for hash, block := range chain.Blocks {
+	for hash, block := range ch.Dag.Nodes {
 		// TODO we could also mark blocks in the path from justified <-> head,
-		//  if we we're using the protolambda LMD-GHOST version
-		id := hashToHexStr(hash)
-		parentId := hashToHexStr(block.ParentHash)
+		//  if we we're using the stateful LMD-GHOST version
+		id := hash.String()
+		parentId := block.Parent.Key.String()
 		check(writer.Write([]string{parentId, id}), "failed to write CSV edge for block " + id)
 	}
 
