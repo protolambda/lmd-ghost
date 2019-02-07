@@ -1,17 +1,22 @@
 package state
 
 import (
+	"lmd-ghost/eth2/attestations/attestation"
 	"lmd-ghost/eth2/common"
 	"lmd-ghost/eth2/common/constants"
-	"lmd-ghost/eth2/data/attestation"
 	"lmd-ghost/eth2/data/validator"
+	"math/rand"
 )
 
 type BeaconState struct {
 
 	Slot uint64
 
-	ValidatorRegistry []validator.Validator
+	// Real-world implementation would have a much more secure RANDAO system.
+	// Here we just hack in a seed to get the validators with.
+	Seed int64
+
+	ValidatorRegistry []*validator.Validator
 
 	// The latest message of each (active) validator,
 	// some validators may not have one, some may point to the same attestation (aggregate).
@@ -19,13 +24,20 @@ type BeaconState struct {
 
 }
 
-func (state *BeaconState) NextSlot() error {
-	state.Slot += 1
+func (st *BeaconState) GetProposer() *validator.Validator {
+	// In spec: get the first committee for the slot being proposed,
+	// and select member within based on slot. Committees are shuffled each epoch.
+	// Here: just get based on epoch-relative slot number, and shuffle complete list every epoch
+	return st.ValidatorRegistry[st.Slot % constants.EPOCH_LENGTH]
+}
 
-	// TODO process batched-block-roots
+func (st *BeaconState) NextSlot() error {
+	st.Slot += 1
 
-	if state.Slot % constants.EPOCH_LENGTH == 0 {
-		if err := state.NextEpoch(); err != nil {
+	// TODO real client: process batched-block-roots
+
+	if st.Slot % constants.EPOCH_LENGTH == 0 {
+		if err := st.NextEpoch(); err != nil {
 			return err
 		}
 	}
@@ -33,7 +45,13 @@ func (state *BeaconState) NextSlot() error {
 	return nil
 }
 
-func (state *BeaconState) NextEpoch() error {
-	// TODO shuffle validators etc.
+func (st *BeaconState) NextEpoch() error {
+	// shuffle validators etc
+	rng := rand.New(rand.NewSource(st.Seed))
+	// TODO: number-theoretic shuffling would be much better
+	rng.Shuffle(len(st.ValidatorRegistry), func(i int, j int) {
+		st.ValidatorRegistry[i], st.ValidatorRegistry[j] = st.ValidatorRegistry[j], st.ValidatorRegistry[i]
+	})
+	// TODO real client: handle all other epoch processing.
 	return nil
 }

@@ -16,7 +16,9 @@ func (st *StateStorage) Init() {
 	st.states = make(map[common.Hash256]*state.BeaconState)
 }
 
+// returns the post-state of a block. Changes are to the state are not persisted without PutPostState()
 func (st *StateStorage) GetPostState(blockHash common.Hash256) (*state.BeaconState, error) {
+	// TODO: this is not sufficient, it must be a copy / not affect original.
 	return st.states[blockHash], nil
 }
 

@@ -32,8 +32,6 @@ TODO: graph results, for different parameter sets. (after/during discussion whic
 ## Implementations
 
 
-**NOTE: below descriptions are outdated: every implementation supports arbitrary weighting now, and batching is implemented. New write-up SOON**
-
 ### Spec implementation: `spec`
 
 The spec is very straightforward:
@@ -41,12 +39,11 @@ The spec is very straightforward:
 1. Start at the justified block
 2. Compare every child, to choose the best one
 3. Comparison is based on scores
-4. Scores are simple, but highly inefficient:
- -- We loop through every attestation
-   ** If the attestation has the child as an ancestor, it adds up to the total vote count for the child
+4. Scores are simple, but highly inefficient: We loop through every attestation, and then if the attestation has the child as an ancestor, it adds up to the total vote count for the child
 5. The best child wins, and repeat 2 - 4 from there, until there is no children left.
 6. Final winner is the head.
 
+However, since aggregation is implemented, it's not as inefficient, since ancestor lookups are limited by the number of targets, instead of the number of attestations. 
 
 ### Cached spec: `cached`
 
@@ -59,7 +56,8 @@ We do so with two measures:
 - We create a lookup array for every single block that is considered. The lookup is logarithmic: we less and less big spans of blocks to find the ancestor
 - We cache the results.
 
-Now we can do the same as in the spec, but the ancestor lookup will be cheap. Still, we have a problem where we consider *every* attestation, every time we make a choice between child-nodes, every step in the path from the justified block, to the eventual head.
+Now we can do the same as in the spec, but the ancestor lookup will be cheap.
+Still, we have a problem where we consider *every* target, every time we make a choice between child-nodes, every step in the path from the justified block, to the eventual head.
 
 
 ### Optimized LMD-GHOST by Vitalik Buterin: `vitalik`
@@ -71,9 +69,8 @@ These include:
 1. Simple yet useful "fast-pathing": if a node has one child, then we don't have to lookup anything to know that this child will be the best child.
 2. Majority voting, or a "clear winner": if a node at a given height has the majority of the votes at the height, then it does not matter what pre-curses it, it will be part of the highest-weighted path from the justified node to the head.
 3. Logarithmic majority vote lookup: we don't want to check all heights, since this is costly, hence only lookup a few heights, in smaller steps. The ancestor-optimization from before is used to get votes at a height relatively quick.
-4. Best-child determination based on some bitmask magic: unclear, and also considers balances. This was ported from the original python implementation, but may be outdated.
-5. Pruning: Given that everything is done in one go, and we do not want to consider all attestations at every depth, we prune away attestations for branches that are not part of the path towards the head.
-
+4. Pruning: Given that everything is done in one go, and we do not want to consider all attestations at every depth, we prune away attestations for branches that are not part of the path towards the head.
+5. Different from original: attestations for blocks are fully batched now, so there's no "latest-targets", but a "latest-scores". Computation is not limited by number of attestations, but number of blocks.
 
 ### Simple attestation propagation DAG: `simple_back_prop`
 

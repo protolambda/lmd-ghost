@@ -19,6 +19,7 @@ func NewBeaconStorage() *BeaconStorage {
 	res := new(BeaconStorage)
 	// inititalize all storage facilities
 	res.BlockStorage.Init()
+	res.StateStorage.Init()
 
 	return res
 }

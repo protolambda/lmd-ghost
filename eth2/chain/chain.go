@@ -7,6 +7,8 @@ import (
 	"lmd-ghost/eth2/block"
 	"lmd-ghost/eth2/common"
 	"lmd-ghost/eth2/dag"
+	"lmd-ghost/eth2/fork_choice"
+	"lmd-ghost/eth2/state"
 	"lmd-ghost/eth2/storage"
 )
 
@@ -16,11 +18,34 @@ type BeaconChain struct {
 	Head      common.Hash256
 
 	// The inner-source of continuously-changing truth: the data stored within and between (i.e. state) the blocks.
-	Storage    storage.BeaconStorage
+	Storage    *storage.BeaconStorage
 
 	// The outer-source of continuously-changing truth: the collection of blocks, structured.
-	Dag        dag.BeaconDag
+	Dag        *dag.BeaconDag
 
+}
+
+func NewBeaconChain(genesisBlock *block.BeaconBlock, genesisState *state.BeaconState, forkChoice fork_choice.ForkChoice) (*BeaconChain, error) {
+	res := &BeaconChain{
+		Head: genesisBlock.Hash,
+		Storage: storage.NewBeaconStorage(),
+		Dag: dag.NewBeaconDag(forkChoice),
+	}
+	if err := res.Storage.PutBlock(genesisBlock); err != nil {
+		return nil, err
+	}
+	if err := res.Storage.PutPostState(genesisBlock.Hash, genesisState); err != nil {
+		return nil, err
+	}
+	res.Dag.Start = &dag.DagNode{
+		Parent: nil,
+		// expected branch factor is 2 (??), capacity of 8 should be fine? (TODO)
+		Children: make([]*dag.DagNode, 0, 8),
+		Key: genesisBlock.Hash,
+		Slot: genesisBlock.Slot,
+		Weight: 0,
+	}
+	return res, nil
 }
 
 func (ch *BeaconChain) BlockIn(block *block.BeaconBlock) error {
@@ -29,17 +54,17 @@ func (ch *BeaconChain) BlockIn(block *block.BeaconBlock) error {
 	// preparation
 	// ======================
 	// get state of parent block
-	state, err := ch.Storage.GetPostState(block.ParentHash)
+	st, err := ch.Storage.GetPostState(block.ParentHash)
 	if err != nil {
 		return err
 	}
-	if state == nil {
+	if st == nil {
 		return errors.New(fmt.Sprintf("incoming block %s has parent %s that has not been processed", block.Hash, block.ParentHash))
 	}
 
 	// skip to slot block.slot - 1
-	for i := state.Slot; i < block.Slot; i++ {
-		if err := state.NextSlot(); err != nil {
+	for i := st.Slot; i < block.Slot; i++ {
+		if err := st.NextSlot(); err != nil {
 			return errors.New(fmt.Sprintf("failed to progress state, continued from parent block %s, up to slot %d, during pre-processing state for block %s", block.ParentHash, i, block.Hash))
 		}
 	}
@@ -47,11 +72,11 @@ func (ch *BeaconChain) BlockIn(block *block.BeaconBlock) error {
 	// processing
 	// ======================
 	// process block
-	if err := block.ProcessBlock(state); err != nil {
+	if err := block.ProcessBlock(st); err != nil {
 		return err
 	}
 	// continue last slot
-	if err := state.NextSlot(); err != nil {
+	if err := st.NextSlot(); err != nil {
 		return err
 	}
 
@@ -62,13 +87,13 @@ func (ch *BeaconChain) BlockIn(block *block.BeaconBlock) error {
 	if err := ch.Storage.PutBlock(block); err != nil {
 		return errors.New("failed to save processed block to storage")
 	}
-	if err := ch.Storage.PutPostState(block.Hash, state); err != nil {
+	if err := ch.Storage.PutPostState(block.Hash, st); err != nil {
 		return errors.New("failed to save processed block to storage")
 	}
 
-	// determine the head
 	ch.Dag.BlockIn(block)
-	ch.Head = ch.Dag.HeadFn()
+
+	ch.UpdateHead()
 
 	return nil
 }
@@ -77,4 +102,9 @@ func (ch *BeaconChain) AttestationIn(attestation *attestation.Attestation) error
 	// TODO verify attestation
 	ch.Dag.AttestationIn(attestation)
 	return nil
+}
+
+func (ch *BeaconChain) UpdateHead() {
+	// determine the head
+	ch.Head = ch.Dag.HeadFn()
 }

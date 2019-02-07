@@ -16,7 +16,7 @@ type BeaconDag struct {
 	ForkChoice fork_choice.ForkChoice
 
 	// Aggegate, the effective "latest-targets", but every attestation is grouped by block.
-	agor attestations.AttestationsAggregator
+	agor *attestations.AttestationsAggregator
 	synced bool
 
 	Nodes map[common.Hash256]*DagNode
@@ -24,6 +24,17 @@ type BeaconDag struct {
 	Start *DagNode
 }
 
+func NewBeaconDag(forkChoice fork_choice.ForkChoice) *BeaconDag {
+	res := &BeaconDag{
+		ForkChoice: forkChoice,
+		synced: false,
+		Nodes: make(map[common.Hash256]*DagNode),
+	}
+	res.agor = attestations.NewAttestationsAggregator(func(blockHash common.Hash256) uint64 {
+		return res.Nodes[blockHash].Slot
+	})
+	return res
+}
 
 func (dag *BeaconDag) BlockIn(block *block.BeaconBlock) {
 	dag.synced = false
