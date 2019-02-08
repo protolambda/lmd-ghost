@@ -12,6 +12,8 @@ type SimConfig struct {
 	BaseAttestWeight uint64
 	MaxExtraAttestWeight uint64
 	Blocks uint64
+	FinalizeEpochsAgo uint64
+	JustifyEpochsAgo uint64
 	AttestationsPerBlock uint64
 	ForkChoiceRule string
 }

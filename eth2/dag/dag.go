@@ -19,7 +19,11 @@ type BeaconDag struct {
 
 	Nodes map[common.Hash256]*DagNode
 
-	Start *DagNode
+	// We do not revert below this node, prune below this.
+	Finalized *DagNode
+	// This is the node used to start a fork-choice from.
+	// Can be modified freely to anything between finalized and head.
+	Justified *DagNode
 }
 
 func NewBeaconDag(initForkChoice InitForkChoice) *BeaconDag {
@@ -54,9 +58,11 @@ func (dag *BeaconDag) BlockIn(block *block.BeaconBlock) {
 		node.Height = node.Parent.Height + 1
 	}
 	dag.Nodes[block.Hash] = node
-	if dag.Start == nil {
-		dag.Start = node
-		dag.ForkChoice.OnStartChange()
+	if dag.Finalized == nil {
+		dag.Finalized = node
+	}
+	if dag.Justified == nil {
+		dag.Justified = node
 	}
 	dag.ForkChoice.OnNewNode(node)
 }
@@ -67,11 +73,26 @@ func (dag *BeaconDag) AttestationIn(atIn *attestation.Attestation) {
 	dag.agor.AttestationIn(atIn)
 }
 
-func (dag *BeaconDag) SetStart(blockHash common.Hash256) {
+func (dag *BeaconDag) Justify(blockHash common.Hash256) {
+	dag.Justified = dag.Nodes[blockHash]
+}
+
+func (dag *BeaconDag) Finalize(blockHash common.Hash256) {
 	dag.synced = false
-	newStart := dag.Nodes[blockHash]
-	dag.Start = newStart
-	dag.ForkChoice.OnStartChange()
+	dag.Finalized = dag.Nodes[blockHash]
+	// Prune away everything older than the finalized block
+	for k, v := range dag.Nodes {
+		if v.Slot < dag.Finalized.Slot {
+			delete(dag.Nodes, k)
+			// Make the children forget the parent. We want to fully decouple it.
+			for _, c := range v.Children {
+				c.Parent = nil
+			}
+		}
+	}
+	//log.Println("pruned data! new size: ", len(dag.Nodes))
+	// make the fork-choice rule aware of the pruning
+	dag.ForkChoice.OnPrune()
 }
 
 func (dag *BeaconDag) SyncChanges() {

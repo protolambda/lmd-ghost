@@ -44,8 +44,8 @@ func (gh *SimpleBackPropLMDGhost) OnNewNode(block *dag.DagNode) {
 	}
 }
 
-func (gh *SimpleBackPropLMDGhost) OnStartChange() {
-	// nothing to do when the start changes
+func (gh *SimpleBackPropLMDGhost) OnPrune() {
+	// nothing to do when dag is pruned
 }
 
 type ChildScore struct {
@@ -54,7 +54,7 @@ type ChildScore struct {
 }
 
 func (gh *SimpleBackPropLMDGhost) HeadFn() *dag.DagNode {
-	start := gh.dag.Start
+	start := gh.dag.Justified
 	// Keep track of weight for each block, per height
 	weightedBlocksAtHeight := make([]map[*dag.DagNode]int64, gh.maxKnownSlot + 1 - start.Slot)
 	for i := 0; i < len(weightedBlocksAtHeight); i++ {
@@ -100,6 +100,6 @@ func (gh *SimpleBackPropLMDGhost) HeadFn() *dag.DagNode {
 	if myBest, hasBest := bestChildMapping[start]; hasBest {
 		return myBest.BestTarget
 	} else {
-		return gh.dag.Start
+		return gh.dag.Justified
 	}
 }

@@ -34,8 +34,10 @@ func writeNodesCSV(path string, ch *chain.BeaconChain) {
 		blockType := "normal"
 		if hash == ch.Head {
 			blockType = "head"
-		} else if hash == ch.Dag.Start.Key {
+		} else if hash == ch.Dag.Justified.Key {
 			blockType = "justified"
+		} else if hash == ch.Dag.Finalized.Key {
+			blockType = "finalized"
 		}
 		block, err := ch.Storage.GetBlock(hash)
 		if err != nil {

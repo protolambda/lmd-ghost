@@ -148,10 +148,46 @@ func (s *Simulation) RunSim() {
 	// update the head 10 times during attestation processing.
 	headUpdateInterval := s.Config.AttestationsPerBlock / 10
 	attestationCounter := uint64(0)
+	if s.Config.FinalizeEpochsAgo < s.Config.JustifyEpochsAgo {
+		panic("invalid config: finalization happens quicker than justification in config")
+	}
+	if s.Config.FinalizeEpochsAgo < 1 {
+		panic("finalization is too quick")
+	}
+	if s.Config.JustifyEpochsAgo < 1 {
+		panic("justification is too quick")
+	}
 	for n := uint64(0); n < s.Config.Blocks; n++ {
+		head := s.Chain.Dag.Nodes[s.Chain.Head]
+		epoch := head.Slot / constants.EPOCH_LENGTH
+		if epoch > s.Config.FinalizeEpochsAgo {
+			finalizedEpoch := epoch - s.Config.FinalizeEpochsAgo
+			if finalizedEpoch > s.Chain.Dag.Finalized.Slot/constants.EPOCH_LENGTH {
+				f := s.Chain.Dag.Justified
+				for f != nil && f.Slot/constants.EPOCH_LENGTH > finalizedEpoch {
+					f = f.Parent
+				}
+				if f != nil && f != s.Chain.Dag.Finalized {
+					s.Chain.Dag.Finalize(f.Key)
+				}
+			}
+		}
+		if epoch > s.Config.JustifyEpochsAgo {
+			justifiedEpoch := epoch - s.Config.JustifyEpochsAgo
+			if justifiedEpoch > s.Chain.Dag.Justified.Slot/constants.EPOCH_LENGTH {
+				j := head
+				for j != nil && j.Slot/constants.EPOCH_LENGTH > justifiedEpoch {
+					j = j.Parent
+				}
+				if j != nil && j != s.Chain.Dag.Justified {
+					s.Chain.Dag.Justify(j.Key)
+				}
+			}
+		}
+
 		if n % logInterval == 0 {
-			log.Printf("total %d blocks, head at slot: %d, processed %d attestations.\n",
-				len(s.Chain.Dag.Nodes), s.Chain.Dag.Nodes[s.Chain.Head].Slot - constants.GENESIS_SLOT, attestationCounter)
+			log.Printf("total %d blocks added, %d blocks in dag, head at slot: %d, processed %d attestations.\n",
+				n, len(s.Chain.Dag.Nodes), s.Chain.Dag.Nodes[s.Chain.Head].Slot - constants.GENESIS_SLOT, attestationCounter)
 		}
 		for a := uint64(0); a < s.Config.AttestationsPerBlock; a++ {
 			s.SimNewAttestation()
@@ -163,6 +199,8 @@ func (s *Simulation) RunSim() {
 		// head will update after adding a block
 		s.SimNewBlock()
 	}
+	log.Printf("total %d blocks added, %d blocks in dag, head at slot: %d, processed %d attestations.\n",
+		s.Config.Blocks, len(s.Chain.Dag.Nodes), s.Chain.Dag.Nodes[s.Chain.Head].Slot - constants.GENESIS_SLOT, attestationCounter)
 }
 
 func (s *Simulation) SaveNetworkGraph() {

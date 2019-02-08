@@ -66,7 +66,7 @@ func (gh *VitaliksOptimizedLMDGhost) ApplyScoreChanges(changes []dag.ScoreChange
 }
 
 func (gh *VitaliksOptimizedLMDGhost) OnNewNode(block *dag.DagNode) {
-	startHeight := gh.dag.Start.Height
+	startHeight := gh.dag.Finalized.Height
 	// update the ancestor data (used for logarithmic lookup)
 	for i := uint8(0); i < 16; i++ {
 		if (block.Height - startHeight) % (1 << i) == 0 {
@@ -153,8 +153,8 @@ func (gh *VitaliksOptimizedLMDGhost) getClearWinner(latestVotes map[*dag.DagNode
 	return nil
 }
 
-func (gh *VitaliksOptimizedLMDGhost) OnStartChange() {
-	minSlot := gh.dag.Start.Slot
+func (gh *VitaliksOptimizedLMDGhost) OnPrune() {
+	minSlot := gh.dag.Finalized.Slot
 	// prune cache (based on slot), and re-init ancestor data for non-pruned data
 	for k, v := range gh.cache {
 		if v.Slot < minSlot {
@@ -186,7 +186,7 @@ func (gh *VitaliksOptimizedLMDGhost) HeadFn() *dag.DagNode {
 		// Copy weight
 		latestVotes[t] = w
 	}
-	head := gh.dag.Start
+	head := gh.dag.Justified
 	for {
 		// short var "c": head.Children
 		if len(head.Children) == 0 {

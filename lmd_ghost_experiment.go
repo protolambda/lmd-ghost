@@ -14,8 +14,10 @@ func main()  {
 		SlotSkipChance: 0,
 		BaseAttestWeight: 100000,
 		MaxExtraAttestWeight: 10000,
-		Blocks: 100,
+		Blocks: 1000,
 		AttestationsPerBlock: 100,
+		JustifyEpochsAgo: 10,
+		FinalizeEpochsAgo: 14,
 		ForkChoiceRule: "stateful",
 	}
 

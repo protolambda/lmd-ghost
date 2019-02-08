@@ -81,7 +81,7 @@ func (gh *StatefulLMDGhost) ApplyScoreChanges(changes []dag.ScoreChange) {
 	// cutOff = (old total weight + netto change) / 2
 	// cutOff2 = old total weight + netto change   (i.e., cutoff x 2)
 	// weight of start point before changes = total old weight
-	cutOff2 := gh.dag.Start.Weight + nettoScoreChange
+	cutOff2 := gh.dag.Finalized.Weight + nettoScoreChange
 
 	// TODO: implement dissolving between changes.
 
@@ -138,8 +138,8 @@ func (gh *StatefulLMDGhost) OnNewNode(node *dag.DagNode) {
 	}
 }
 
-func (gh *StatefulLMDGhost) OnStartChange() {
-	// nothing to do when the start changes, dag with state is already being pruned.
+func (gh *StatefulLMDGhost) OnPrune() {
+	// nothing to do when the dag is pruned, state is pruned with it
 }
 
 func (gh *StatefulLMDGhost) HeadFn() *dag.DagNode {
@@ -147,5 +147,5 @@ func (gh *StatefulLMDGhost) HeadFn() *dag.DagNode {
 	// *Bonus*: And this works for *every* node in the graph!
 	// Changing the root is costless
 	// (If you prune away old nodes it still costs something, but this also needs to be done for other algos)
-	return gh.dag.Start.BestTarget
+	return gh.dag.Justified.BestTarget
 }

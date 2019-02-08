@@ -40,8 +40,8 @@ func (gh *SpecLMDGhost) OnNewNode(node *dag.DagNode) {
 	// free, at cost of head-function
 }
 
-func (gh *SpecLMDGhost) OnStartChange() {
-	// nothing to do when the start changes
+func (gh *SpecLMDGhost) OnPrune() {
+	// nothing to do when dag is pruned
 }
 
 /// Retrieves the head by *recursively* looking for the highest voted block
@@ -53,7 +53,7 @@ func (gh *SpecLMDGhost) HeadFn() *dag.DagNode {
 	// This difference only really matters when there's many validators inactive,
 	//  and the client implementation doesn't store them separately.
 
-	head := gh.dag.Start
+	head := gh.dag.Justified
 	for {
 		if len(head.Children) == 0 {
 			return head
