@@ -1,25 +1,29 @@
 package storage
 
 import (
-	"lmd-ghost/eth2/storage/block"
-	"lmd-ghost/eth2/storage/state"
+	"lmd-ghost/eth2/block"
+	"lmd-ghost/eth2/common"
 )
 
-/// very simple storage, to abstract away state and block-storage from the implementation,
+/// Very simple storage, to abstract away block-storage from the implementation,
 //  making it easier to integrate the advanced parts like fork-choice etc. into a real client.
 type BeaconStorage struct {
 
-	Blocks block.BlockStorage
+	blocks map[common.Hash256]*block.BeaconBlock
 
-	States state.StateStorage
 }
 
 func NewBeaconStorage() *BeaconStorage {
-	// create storage
-	res := new(BeaconStorage)
-	// inititalize all storage facilities
-	res.Blocks.Init()
-	res.States.Init()
-
+	res := &BeaconStorage{blocks: make(map[common.Hash256]*block.BeaconBlock)}
 	return res
 }
+
+func (st *BeaconStorage) GetBlock(blockHash common.Hash256) (*block.BeaconBlock, error) {
+	return st.blocks[blockHash], nil
+}
+
+func (st *BeaconStorage) PutBlock(block *block.BeaconBlock) error {
+	st.blocks[block.Hash] = block
+	return nil
+}
+
