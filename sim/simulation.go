@@ -22,7 +22,7 @@ var forkRules = map[string]dag.InitForkChoice {
 	"spec": spec.NewSpecLMDGhost,
 	"vitalik": vitalik.NewVitaliksOptimizedLMDGhost,
 	"cached": cached.NewCachedLMDGhost,
-	"simple-back-prop": simple_back_prop.NewSimpleBackPropLMDGhost,
+	"simple_back_prop": simple_back_prop.NewSimpleBackPropLMDGhost,
 	"stateful": stateful.NewStatefulLMDGhost,
 }
 
@@ -86,7 +86,7 @@ func (s *Simulation) SimNewBlock() {
 	// random parent block, derived from the current head, but perturbed; latency may introduce a fork in the chain
 	parentBlock := s.getRandomTarget()
 
-	blockSlot := parentBlock.Slot + 1
+	blockSlot := parentBlock.Slot + 3
 	for i := 0; i < 10; i++ {
 		if s.RNG.Float64() > s.Config.SlotSkipChance {
 			break
@@ -143,7 +143,6 @@ func (s *Simulation) SimNewAttestation() {
 
 // TODO parametrize latency, simulated attestations per block, and slot-skip
 func (s *Simulation) RunSim() {
-	simName := s.Config.String()
 	// log every 5% of the simulated amount of blocks
 	logInterval := s.Config.Blocks / 20
 	// update the head 10 times during attestation processing.
@@ -151,7 +150,8 @@ func (s *Simulation) RunSim() {
 	attestationCounter := uint64(0)
 	for n := uint64(0); n < s.Config.Blocks; n++ {
 		if n % logInterval == 0 {
-			log.Printf("total %d blocks, head at slot: %d, processed %d attestations.\n", len(s.Chain.Dag.Nodes), s.Chain.Dag.Nodes[s.Chain.Head].Slot, attestationCounter)
+			log.Printf("total %d blocks, head at slot: %d, processed %d attestations.\n",
+				len(s.Chain.Dag.Nodes), s.Chain.Dag.Nodes[s.Chain.Head].Slot - constants.GENESIS_SLOT, attestationCounter)
 		}
 		for a := uint64(0); a < s.Config.AttestationsPerBlock; a++ {
 			s.SimNewAttestation()
@@ -163,5 +163,9 @@ func (s *Simulation) RunSim() {
 		// head will update after adding a block
 		s.SimNewBlock()
 	}
+}
+
+func (s *Simulation) SaveNetworkGraph() {
+	simName := s.Config.String()
 	viz.CreateVizGraph("out/" + simName, s.Chain)
 }

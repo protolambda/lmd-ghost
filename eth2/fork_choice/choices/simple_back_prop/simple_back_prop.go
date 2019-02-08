@@ -54,22 +54,23 @@ type ChildScore struct {
 }
 
 func (gh *SimpleBackPropLMDGhost) HeadFn() *dag.DagNode {
+	start := gh.dag.Start
 	// Keep track of weight for each block, per height
-	weightedBlocksAtHeight := make([]map[*dag.DagNode]int64, gh.maxKnownSlot + 1)
-	for i := uint64(0); i <= gh.maxKnownSlot; i++ {
+	weightedBlocksAtHeight := make([]map[*dag.DagNode]int64, gh.maxKnownSlot + 1 - start.Slot)
+	for i := 0; i < len(weightedBlocksAtHeight); i++ {
 		weightedBlocksAtHeight[i] = make(map[*dag.DagNode]int64)
 	}
 	// compute cutoff: sum all scores, and divide by 2.
 	cutOff := int64(0)
 	// put all initial weights in the "DAG" (or tree, if non-justified roots would be removed)
 	for t, w := range gh.latestScores {
-		weightedBlocksAtHeight[t.Slot][t] = weightedBlocksAtHeight[t.Slot][t] + w
+		weightedBlocksAtHeight[t.Slot - start.Slot][t] = weightedBlocksAtHeight[t.Slot - start.Slot][t] + w
 		cutOff += w
 	}
 	cutOff /= 2
 	bestChildMapping := make(map[*dag.DagNode]ChildScore)
 	// Now back-propagate, per slot height
-	for i := gh.maxKnownSlot; i > 0; i-- {
+	for i := gh.maxKnownSlot - start.Slot; i > 0; i-- {
 		// Propagate all higher-slot votes back to the root of the tree,
 		//  while keeping track of the most-voted child.
 		for block, w := range weightedBlocksAtHeight[i] {
@@ -82,7 +83,7 @@ func (gh *SimpleBackPropLMDGhost) HeadFn() *dag.DagNode {
 				}
 			}
 			// Propagate weight of child to parent
-			weightedBlocksAtHeight[i-1][block.Parent] = weightedBlocksAtHeight[i-1][block.Parent] + w
+			weightedBlocksAtHeight[block.Parent.Slot - start.Slot][block.Parent] = weightedBlocksAtHeight[block.Parent.Slot - start.Slot][block.Parent] + w
 			// keep track of the best child for this parent block
 			mapping, initialized := bestChildMapping[block.Parent]
 			if !initialized || w > mapping.ChildScore {
@@ -96,7 +97,7 @@ func (gh *SimpleBackPropLMDGhost) HeadFn() *dag.DagNode {
 			}
 		}
 	}
-	if myBest, hasBest := bestChildMapping[gh.dag.Start]; hasBest {
+	if myBest, hasBest := bestChildMapping[start]; hasBest {
 		return myBest.BestTarget
 	} else {
 		return gh.dag.Start

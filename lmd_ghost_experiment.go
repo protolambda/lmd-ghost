@@ -6,30 +6,29 @@ import (
 	"time"
 )
 
-func runningtime(s string) (string, time.Time) {
-	log.Println("Start:	", s)
-	return s, time.Now()
-}
-
-func track(s string, startTime time.Time) {
-	endTime := time.Now()
-	log.Println("End:	", s, "took", endTime.Sub(startTime))
-}
 
 func main()  {
 	config := &sim.SimConfig{
-		ValidatorCount: 100,
-		LatencyFactor: 0.8,
-		SlotSkipChance: 0.4,
+		ValidatorCount: 400,
+		LatencyFactor: 0.4,
+		SlotSkipChance: 0,
 		BaseAttestWeight: 100000,
 		MaxExtraAttestWeight: 10000,
 		Blocks: 100,
-		AttestationsPerBlock: 1000,
-		ForkChoiceRule: "spec",
+		AttestationsPerBlock: 100,
+		ForkChoiceRule: "vitalik",
 	}
 
 	s := sim.NewSimulation(config)
+	name := config.String()
 
-	defer track(runningtime(config.String()))
+	log.Println("Start:	", name)
+	startTime := time.Now()
 	s.RunSim()
+	endTime := time.Now()
+	log.Println("End: ", name, "took", endTime.Sub(startTime))
+
+	// Optional: write the network graph of the chain to a nodes and edges CSV
+	// s.SaveNetworkGraph()
+
 }

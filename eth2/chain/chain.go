@@ -36,7 +36,6 @@ func NewBeaconChain(genesisBlock *block.BeaconBlock, initForkChoice dag.InitFork
 	//	return nil, err
 	//}
 	res.Dag.BlockIn(genesisBlock)
-	res.Dag.Start = res.Dag.Nodes[genesisBlock.Hash]
 	return res, nil
 }
 

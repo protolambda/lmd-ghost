@@ -44,14 +44,20 @@ func (dag *BeaconDag) BlockIn(block *block.BeaconBlock) {
 		Children: make([]*DagNode, 0, 8),
 		Key: block.Hash,
 		Slot: block.Slot,
+		Height: 0,
 		Weight: 0,
 	}
 	// append to parent's children if there is a parent
 	if node.Parent != nil {
 		node.IndexAsChild = uint32(len(node.Parent.Children))
 		node.Parent.Children = append(node.Parent.Children, node)
+		node.Height = node.Parent.Height + 1
 	}
 	dag.Nodes[block.Hash] = node
+	if dag.Start == nil {
+		dag.ForkChoice.OnStartChange(node)
+		dag.Start = node
+	}
 	dag.ForkChoice.OnNewNode(node)
 }
 

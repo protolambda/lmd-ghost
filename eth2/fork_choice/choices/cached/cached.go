@@ -25,9 +25,8 @@ type CachedLMDGhost struct {
 	cache map[CacheKey]*dag.DagNode
 
 	// slot -> hash -> ancestor
-	ancestors map[uint8]map[*dag.DagNode]*dag.DagNode
+	ancestors [16]map[*dag.DagNode]*dag.DagNode
 
-	maxKnownSlot uint64
 }
 
 func NewCachedLMDGhost(d *dag.BeaconDag) dag.ForkChoice {
@@ -35,8 +34,7 @@ func NewCachedLMDGhost(d *dag.BeaconDag) dag.ForkChoice {
 		dag:          d,
 		latestScores: make(map[*dag.DagNode]int64),
 		cache: make(map[CacheKey]*dag.DagNode),
-		ancestors: make(map[uint8]map[*dag.DagNode]*dag.DagNode),
-		maxKnownSlot: 0,
+		ancestors: [16]map[*dag.DagNode]*dag.DagNode{},
 	}
 	for i := uint8(0); i < 16; i++ {
 		res.ancestors[i] = make(map[*dag.DagNode]*dag.DagNode)
@@ -44,11 +42,12 @@ func NewCachedLMDGhost(d *dag.BeaconDag) dag.ForkChoice {
 	return res
 }
 
-/// The spec get_ancestor, but with caching, and skipping ahead logarithmically
-func (gh *CachedLMDGhost) getAncestor(block *dag.DagNode, slot uint64) *dag.DagNode {
+/// Similar to the spec get_ancestor,
+/// but using height instead of slot numbers to enable skipping ahead logarithmically, and with caching.
+func (gh *CachedLMDGhost) getAncestor(block *dag.DagNode, height uint64) *dag.DagNode {
 
-	if slot >= block.Slot {
-		if slot > block.Slot {
+	if height >= block.Height {
+		if height > block.Height {
 			return nil
 		} else {
 			return block
@@ -58,10 +57,10 @@ func (gh *CachedLMDGhost) getAncestor(block *dag.DagNode, slot uint64) *dag.DagN
 	// construct key
 	cacheKey := CacheKey{}
 	copy(cacheKey[:32], block.Key[:])
-	cacheKey[32] = uint8(slot >> 24)
-	cacheKey[33] = uint8(slot >> 16)
-	cacheKey[34] = uint8(slot >> 8)
-	cacheKey[35] = uint8(slot)
+	cacheKey[32] = uint8(height >> 24)
+	cacheKey[33] = uint8(height >> 16)
+	cacheKey[34] = uint8(height >> 8)
+	cacheKey[35] = uint8(height)
 
 	// check cache
 	if res, ok := gh.cache[cacheKey]; ok {
@@ -69,16 +68,16 @@ func (gh *CachedLMDGhost) getAncestor(block *dag.DagNode, slot uint64) *dag.DagN
 		return res
 	}
 
-	if x := gh.ancestors[logz[block.Slot - slot - 1]][block]; x == nil {
+	if x := gh.ancestors[logz[block.Height - height - 1]][block]; x == nil {
 		panic("Ancestors data is invalid")
 	}
 
 	// this will be the output
 	// skip ahead logarithmically to find the ancestor, and dive in recursively
-	skipBlock := gh.ancestors[logz[block.Slot - slot - 1]][block]
-	o := gh.getAncestor(skipBlock, slot)
+	skipBlock := gh.ancestors[logz[block.Height - height - 1]][block]
+	o := gh.getAncestor(skipBlock, height)
 
-	if o.Slot != slot {
+	if o.Height != height {
 		panic("Found ancestor is at wrong height")
 	}
 
@@ -102,18 +101,14 @@ func (gh *CachedLMDGhost) ApplyScoreChanges(changes []dag.ScoreChange) {
 }
 
 func (gh *CachedLMDGhost) OnNewNode(block *dag.DagNode) {
+	startHeight := gh.dag.Start.Height
 	// update the ancestor data (used for logarithmic lookup)
 	for i := uint8(0); i < 16; i++ {
-		if block.Slot % (1 << i) == 0 {
+		if (block.Height - startHeight) % (1 << i) == 0 {
 			gh.ancestors[i][block] = block.Parent
 		} else {
 			gh.ancestors[i][block] = gh.ancestors[i][block.Parent]
 		}
-	}
-
-	// update maximum known slot
-	if block.Slot > gh.maxKnownSlot {
-		gh.maxKnownSlot = block.Slot
 	}
 }
 
@@ -151,7 +146,7 @@ func (gh *CachedLMDGhost) HeadFn() *dag.DagNode {
 func (gh *CachedLMDGhost) getVoteCount(block *dag.DagNode) int64 {
 	totalWeight := int64(0)
 	for target, weight := range gh.latestScores {
-		if anc := gh.getAncestor(target, block.Slot); anc != nil && anc == target {
+		if anc := gh.getAncestor(target, block.Height); anc != nil && anc == target {
 			totalWeight += weight
 		}
 	}
