@@ -6,7 +6,6 @@ import (
 	"lmd-ghost/eth2/block"
 	"lmd-ghost/eth2/common"
 	"lmd-ghost/eth2/dag"
-	"lmd-ghost/eth2/fork_choice"
 	"lmd-ghost/eth2/storage"
 )
 
@@ -23,7 +22,7 @@ type BeaconChain struct {
 
 }
 
-func NewBeaconChain(genesisBlock *block.BeaconBlock, initForkChoice fork_choice.InitForkChoice) (*BeaconChain, error) {
+func NewBeaconChain(genesisBlock *block.BeaconBlock, initForkChoice dag.InitForkChoice) (*BeaconChain, error) {
 	res := &BeaconChain{
 		Head: genesisBlock.Hash,
 		Storage: storage.NewBeaconStorage(),
@@ -36,14 +35,8 @@ func NewBeaconChain(genesisBlock *block.BeaconBlock, initForkChoice fork_choice.
 	//if err := res.Storage.PutPostState(genesisBlock.Hash, genesisState); err != nil {
 	//	return nil, err
 	//}
-	res.Dag.Start = &dag.DagNode{
-		Parent: nil,
-		// expected branch factor is 2 (??), capacity of 8 should be fine? (TODO)
-		Children: make([]*dag.DagNode, 0, 8),
-		Key: genesisBlock.Hash,
-		Slot: genesisBlock.Slot,
-		Weight: 0,
-	}
+	res.Dag.BlockIn(genesisBlock)
+	res.Dag.Start = res.Dag.Nodes[genesisBlock.Hash]
 	return res, nil
 }
 

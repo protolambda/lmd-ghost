@@ -2,7 +2,6 @@ package vitalik
 
 import (
 	"lmd-ghost/eth2/dag"
-	"lmd-ghost/eth2/fork_choice"
 )
 
 /*
@@ -39,7 +38,7 @@ type VitaliksOptimizedLMDGhost struct {
 	maxKnownSlot uint64
 }
 
-func NewVitaliksOptimizedLMDGhost(d *dag.BeaconDag) fork_choice.ForkChoice {
+func NewVitaliksOptimizedLMDGhost(d *dag.BeaconDag) dag.ForkChoice {
 	res := &VitaliksOptimizedLMDGhost{
 		dag: d,
 		latestScores: make(map[*dag.DagNode]int64),
@@ -53,7 +52,7 @@ func NewVitaliksOptimizedLMDGhost(d *dag.BeaconDag) fork_choice.ForkChoice {
 	return res
 }
 
-func (gh *VitaliksOptimizedLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
+func (gh *VitaliksOptimizedLMDGhost) ApplyScoreChanges(changes []dag.ScoreChange) {
 	for _, v := range changes {
 		gh.latestScores[v.Target] += v.ScoreDelta
 	}

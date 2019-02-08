@@ -64,6 +64,9 @@ func writeEdgesCSV(path string, ch *chain.BeaconChain) {
 	check(writer.Write([]string{"Source","Target"}), "failed to write edges-CSV header")
 
 	for hash, block := range ch.Dag.Nodes {
+		if block.Parent == nil {
+			continue
+		}
 		// TODO we could also mark blocks in the path from justified <-> head,
 		//  if we we're using the stateful LMD-GHOST version
 		id := hash.String()

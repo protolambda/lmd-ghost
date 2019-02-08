@@ -2,7 +2,6 @@ package cached
 
 import (
 	"lmd-ghost/eth2/dag"
-	"lmd-ghost/eth2/fork_choice"
 )
 
 type CacheKey [32 + 4]uint8
@@ -31,7 +30,7 @@ type CachedLMDGhost struct {
 	maxKnownSlot uint64
 }
 
-func NewCachedLMDGhost(d *dag.BeaconDag) fork_choice.ForkChoice {
+func NewCachedLMDGhost(d *dag.BeaconDag) dag.ForkChoice {
 	res := &CachedLMDGhost{
 		dag:          d,
 		latestScores: make(map[*dag.DagNode]int64),
@@ -89,7 +88,7 @@ func (gh *CachedLMDGhost) getAncestor(block *dag.DagNode, slot uint64) *dag.DagN
 	return o
 }
 
-func (gh *CachedLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
+func (gh *CachedLMDGhost) ApplyScoreChanges(changes []dag.ScoreChange) {
 	for _, v := range changes {
 		gh.latestScores[v.Target] += v.ScoreDelta
 	}
@@ -103,23 +102,6 @@ func (gh *CachedLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
 }
 
 func (gh *CachedLMDGhost) OnNewNode(block *dag.DagNode) {
-	// update the ancestor data (used for logarithmic lookup)
-	for i := uint8(0); i < 16; i++ {
-		if block.Slot % (1 << i) == 0 {
-			gh.ancestors[i][block] = block.Parent
-		} else {
-			gh.ancestors[i][block] = gh.ancestors[i][block.Parent]
-		}
-	}
-
-	// update maximum known slot
-	if block.Slot > gh.maxKnownSlot {
-		gh.maxKnownSlot = block.Slot
-	}
-}
-
-
-func (gh *CachedLMDGhost) BlockIn(block *dag.DagNode) {
 	// update the ancestor data (used for logarithmic lookup)
 	for i := uint8(0); i < 16; i++ {
 		if block.Slot % (1 << i) == 0 {

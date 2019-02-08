@@ -2,7 +2,6 @@ package simple_back_prop
 
 import (
 	"lmd-ghost/eth2/dag"
-	"lmd-ghost/eth2/fork_choice"
 )
 
 /// A simple take on using a DAG for the fork-choice.
@@ -16,7 +15,7 @@ type SimpleBackPropLMDGhost struct {
 	latestScores map[*dag.DagNode]int64
 }
 
-func NewSimpleBackPropLMDGhost(d *dag.BeaconDag) fork_choice.ForkChoice {
+func NewSimpleBackPropLMDGhost(d *dag.BeaconDag) dag.ForkChoice {
 	res := &SimpleBackPropLMDGhost{
 		dag:          d,
 		latestScores: make(map[*dag.DagNode]int64),
@@ -25,7 +24,7 @@ func NewSimpleBackPropLMDGhost(d *dag.BeaconDag) fork_choice.ForkChoice {
 	return res
 }
 
-func (gh *SimpleBackPropLMDGhost) ApplyScoreChanges(changes []fork_choice.ScoreChange) {
+func (gh *SimpleBackPropLMDGhost) ApplyScoreChanges(changes []dag.ScoreChange) {
 	for _, v := range changes {
 		gh.latestScores[v.Target] += v.ScoreDelta
 	}

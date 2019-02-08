@@ -25,7 +25,7 @@ func main()  {
 		MaxExtraAttestWeight: 10000,
 		Blocks: 100,
 		AttestationsPerBlock: 1000,
-		ForkChoiceRule: "stateful",
+		ForkChoiceRule: "spec",
 	}
 
 	s := sim.NewSimulation(config)

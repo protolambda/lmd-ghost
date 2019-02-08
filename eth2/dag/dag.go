@@ -2,18 +2,16 @@ package dag
 
 import (
 	"lmd-ghost/eth2/attestations"
+	"lmd-ghost/eth2/attestations/attestation"
 	"lmd-ghost/eth2/block"
 	"lmd-ghost/eth2/common"
-	"lmd-ghost/eth2/attestations/attestation"
-	"lmd-ghost/eth2/fork_choice"
 )
 
 /// Beacon-Dag: a collection of the blocks in the canonical chain, and all its unfinalized branches.
 
 type BeaconDag struct {
 
-	// The main component: chooses which truth to follow.
-	ForkChoice fork_choice.ForkChoice
+	ForkChoice ForkChoice
 
 	// Aggegate, the effective "latest-targets", but every attestation is grouped by block.
 	agor *attestations.AttestationsAggregator
@@ -24,7 +22,7 @@ type BeaconDag struct {
 	Start *DagNode
 }
 
-func NewBeaconDag(initForkChoice fork_choice.InitForkChoice) *BeaconDag {
+func NewBeaconDag(initForkChoice InitForkChoice) *BeaconDag {
 	res := &BeaconDag{
 		synced: false,
 		Nodes: make(map[common.Hash256]*DagNode),
@@ -73,7 +71,7 @@ func (dag *BeaconDag) SetStart(blockHash common.Hash256) {
 
 func (dag *BeaconDag) SyncChanges() {
 	// Find all the changes made in the aggregator and apply them to the DAG.
-	changes := make([]fork_choice.ScoreChange, 0)
+	changes := make([]ScoreChange, 0)
 	for k, v := range dag.agor.LatestAggregates {
 		if v.PrevWeight != v.Weight {
 			// get delta
@@ -81,7 +79,7 @@ func (dag *BeaconDag) SyncChanges() {
 			// resolve difference in weight
 			v.PrevWeight = v.Weight
 			// remember the change, append it to our "to do" list of changes
-			changes = append(changes, fork_choice.ScoreChange{Target: dag.Nodes[k], ScoreDelta: delta})
+			changes = append(changes, ScoreChange{Target: dag.Nodes[k], ScoreDelta: delta})
 		}
 	}
 	dag.ForkChoice.ApplyScoreChanges(changes)

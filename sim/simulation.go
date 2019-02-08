@@ -7,7 +7,6 @@ import (
 	"lmd-ghost/eth2/common"
 	"lmd-ghost/eth2/common/constants"
 	"lmd-ghost/eth2/dag"
-	"lmd-ghost/eth2/fork_choice"
 	"lmd-ghost/eth2/fork_choice/choices/cached"
 	"lmd-ghost/eth2/fork_choice/choices/simple_back_prop"
 	"lmd-ghost/eth2/fork_choice/choices/spec"
@@ -19,7 +18,7 @@ import (
 )
 
 
-var forkRules = map[string]fork_choice.InitForkChoice {
+var forkRules = map[string]dag.InitForkChoice {
 	"spec": spec.NewSpecLMDGhost,
 	"vitalik": vitalik.NewVitaliksOptimizedLMDGhost,
 	"cached": cached.NewCachedLMDGhost,
@@ -65,7 +64,7 @@ func (s *Simulation) getRandomTarget() *dag.DagNode {
 	upCount := 0
 	target := s.Chain.Dag.Nodes[s.Chain.Head]
 	for {
-		if target.Slot > 0 && s.RNG.Float64() < s.Config.LatencyFactor {
+		if target.Parent != nil && s.RNG.Float64() < s.Config.LatencyFactor {
 			target = target.Parent
 			upCount++
 		} else {
