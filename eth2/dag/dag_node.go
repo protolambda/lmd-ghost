@@ -17,7 +17,7 @@ type DagNode struct {
 
 	Slot uint64
 
-	// Raw height, a.k.a. distance from genesis in number of blocks.
+	// Raw height, a.k.a. distance from genesis in number of blocks. Not used in every implementation.
 	Height uint64
 
 	// Note: unused in most algorithms. Most algorithms keep track of scores with a map of latest-scores,

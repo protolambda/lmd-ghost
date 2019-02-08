@@ -86,7 +86,7 @@ func (s *Simulation) SimNewBlock() {
 	// random parent block, derived from the current head, but perturbed; latency may introduce a fork in the chain
 	parentBlock := s.getRandomTarget()
 
-	blockSlot := parentBlock.Slot + 3
+	blockSlot := parentBlock.Slot + 1
 	for i := 0; i < 10; i++ {
 		if s.RNG.Float64() > s.Config.SlotSkipChance {
 			break

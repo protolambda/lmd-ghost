@@ -15,7 +15,9 @@ Implementations:
 
 ## Simulation
 
-There is a simulated chain, in the `sim` package, with some constants & parameters. And then there is a few more parameters in the usage of this chain in the `lmd_ghost_experiment.go` file.
+There is a simulation, in the `sim` package, with a config struct. The simulation is started from the `lmd_ghost_experiment.go` file, where the config values are specified.
+
+Config: check out `sim/config.go` for documentation on all the different config options.
 
 The simulation code is a work-in-progress, we are discussing parameters in an issue on the specs repo, here: https://github.com/ethereum/eth2.0-specs/issues/570
 
@@ -59,6 +61,15 @@ We do so with two measures:
 Now we can do the same as in the spec, but the ancestor lookup will be cheap.
 Still, we have a problem where we consider *every* target, every time we make a choice between child-nodes, every step in the path from the justified block, to the eventual head.
 
+#### Drawbacks
+
+- The cache needs to be pruned
+- The ancestor data needs to be pruned, and remainder needs to be updated every time.
+ Either per finalization, or justification. Per-justification results in better lookup speeds. But the cost of doing an update may not be worth it.
+- We have to use **heights** (a.k.a. distance from genesis in number of blocks), instead of slots.
+ The implementation of Vitalik that this is extracted from is made to work for an older version of the spec,
+ and does not seem to account for large gaps (i.e. multiple empty slots) between blocks.
+- Pruning, updating, and tracking block-height adds quite a lot to complexity, caching is hard to get right. 
 
 ### Optimized LMD-GHOST by Vitalik Buterin: `vitalik`
 
@@ -71,6 +82,10 @@ These include:
 3. Logarithmic majority vote lookup: we don't want to check all heights, since this is costly, hence only lookup a few heights, in smaller steps. The ancestor-optimization from before is used to get votes at a height relatively quick.
 4. Pruning: Given that everything is done in one go, and we do not want to consider all attestations at every depth, we prune away attestations for branches that are not part of the path towards the head.
 5. Different from original: attestations for blocks are fully batched now, so there's no "latest-targets", but a "latest-scores". Computation is not limited by number of attestations, but number of blocks.
+
+#### Drawbacks
+
+All drawbacks from `cached`, a subset of the features in this implementation.
 
 ### Simple attestation propagation DAG: `simple_back_prop`
 
@@ -92,6 +107,15 @@ And then there are a few optimizations:
 The first optimization could be extended: we can propagate the best target (i.e. leaf node) as well. So we don't have to walk back, we can just pick the best leaf from the start.
 This is done in the below more advanced implementation.
 
+#### Drawbacks
+
+- The per-slot/height processing consumes quite some memory (relatively), since we create a lot of maps.
+
+#### Possible improvements
+
+- Optimize you data-structure of unfinalized blocks to make per-height/slot iteration efficient. No need to re-construct it every time you want to find the head.
+- Change to a per-height (i.e. distance to genesis) approach, instead of per slot. Effectively skip empty slots, making the implementation use less memory.
+
 ### State-ful DAG
 
 This is the port of the below sum-vote DAG, to support aggregation of attestations, and arbitrary weighting.
@@ -107,7 +131,9 @@ This information includes:
 
 Head-lookup is simply `O(1)`: get the best target node for the starting node.
 
-#### Tradeoffs
+Pruning: If you're already pruning your collection of blocks (the DAG), you won't need to do additional work for pruning.
+
+#### Drawbacks
 
 To achieve `O(1)` during the "computation" of the head, insertions have to be processed to update the state.
 
@@ -135,7 +161,7 @@ More advanced dissolving (i.e. combine two changes into none) optimizations from
 
 ### Sum-vote DAG with propagation cut-off
 
-*Documented here for archiving purposes.*
+**Deprecated.** *Documented here for archiving purposes.*
 
 Previously we did not consider weighting (e.g. balances of attesters) or aggregating (similar to weighting, but no single attester identity behind a vote change).
 
