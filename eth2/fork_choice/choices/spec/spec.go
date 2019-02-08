@@ -40,7 +40,7 @@ func (gh *SpecLMDGhost) OnNewNode(node *dag.DagNode) {
 	// free, at cost of head-function
 }
 
-func (gh *SpecLMDGhost) OnStartChange(newStart *dag.DagNode) {
+func (gh *SpecLMDGhost) OnStartChange() {
 	// nothing to do when the start changes
 }
 

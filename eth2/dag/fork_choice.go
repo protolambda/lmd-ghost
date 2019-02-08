@@ -8,7 +8,7 @@ type ScoreChange struct {
 type ForkChoice interface {
 	OnNewNode(node *DagNode)
 	ApplyScoreChanges(changes []ScoreChange)
-	OnStartChange(newStart *DagNode)
+	OnStartChange()
 	HeadFn() *DagNode
 }
 

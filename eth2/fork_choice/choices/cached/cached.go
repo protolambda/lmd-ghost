@@ -112,8 +112,27 @@ func (gh *CachedLMDGhost) OnNewNode(block *dag.DagNode) {
 	}
 }
 
-func (gh *CachedLMDGhost) OnStartChange(newStart *dag.DagNode) {
-	// nothing to do when the start changes
+func (gh *CachedLMDGhost) OnStartChange() {
+	minSlot := gh.dag.Start.Slot
+	// prune cache (based on slot), and re-init ancestor data for non-pruned data
+	for k, v := range gh.cache {
+		if v.Slot < minSlot {
+			// deletion during iteration here is safe in Go
+			delete(gh.cache, k)
+		}
+	}
+	// prune away old ancestor data
+	for _, ancMap := range gh.ancestors {
+		for k, v := range ancMap {
+			if v.Slot < minSlot {
+				delete(ancMap, k)
+			}
+		}
+	}
+	// now update all ancestor data.
+	for _, v := range gh.dag.Nodes {
+		gh.OnNewNode(v)
+	}
 }
 
 /// Retrieves the head by *recursively* looking for the highest voted block

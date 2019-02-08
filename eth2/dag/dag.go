@@ -55,8 +55,8 @@ func (dag *BeaconDag) BlockIn(block *block.BeaconBlock) {
 	}
 	dag.Nodes[block.Hash] = node
 	if dag.Start == nil {
-		dag.ForkChoice.OnStartChange(node)
 		dag.Start = node
+		dag.ForkChoice.OnStartChange()
 	}
 	dag.ForkChoice.OnNewNode(node)
 }
@@ -70,9 +70,8 @@ func (dag *BeaconDag) AttestationIn(atIn *attestation.Attestation) {
 func (dag *BeaconDag) SetStart(blockHash common.Hash256) {
 	dag.synced = false
 	newStart := dag.Nodes[blockHash]
-	dag.ForkChoice.OnStartChange(newStart)
-	// change old start after signifying the new start, the fork-choice gets an opportunity to retrieve both nodes.
 	dag.Start = newStart
+	dag.ForkChoice.OnStartChange()
 }
 
 func (dag *BeaconDag) SyncChanges() {

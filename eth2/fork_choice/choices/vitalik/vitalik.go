@@ -153,8 +153,27 @@ func (gh *VitaliksOptimizedLMDGhost) getClearWinner(latestVotes map[*dag.DagNode
 	return nil
 }
 
-func (gh *VitaliksOptimizedLMDGhost) OnStartChange(newStart *dag.DagNode) {
-	// TODO prune/change ancestors cache?
+func (gh *VitaliksOptimizedLMDGhost) OnStartChange() {
+	minSlot := gh.dag.Start.Slot
+	// prune cache (based on slot), and re-init ancestor data for non-pruned data
+	for k, v := range gh.cache {
+		if v.Slot < minSlot {
+			// deletion during iteration here is safe in Go
+			delete(gh.cache, k)
+		}
+	}
+	// prune away old ancestor data
+	for _, ancMap := range gh.ancestors {
+		for k, v := range ancMap {
+			if v.Slot < minSlot {
+				delete(ancMap, k)
+			}
+		}
+	}
+	// now update all ancestor data.
+	for _, v := range gh.dag.Nodes {
+		gh.OnNewNode(v)
+	}
 }
 
 func (gh *VitaliksOptimizedLMDGhost) HeadFn() *dag.DagNode {

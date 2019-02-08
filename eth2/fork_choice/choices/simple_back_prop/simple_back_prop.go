@@ -44,7 +44,7 @@ func (gh *SimpleBackPropLMDGhost) OnNewNode(block *dag.DagNode) {
 	}
 }
 
-func (gh *SimpleBackPropLMDGhost) OnStartChange(newStart *dag.DagNode) {
+func (gh *SimpleBackPropLMDGhost) OnStartChange() {
 	// nothing to do when the start changes
 }
 

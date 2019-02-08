@@ -138,8 +138,8 @@ func (gh *StatefulLMDGhost) OnNewNode(node *dag.DagNode) {
 	}
 }
 
-func (gh *StatefulLMDGhost) OnStartChange(newStart *dag.DagNode) {
-	// nothing to do when the start changes
+func (gh *StatefulLMDGhost) OnStartChange() {
+	// nothing to do when the start changes, dag with state is already being pruned.
 }
 
 func (gh *StatefulLMDGhost) HeadFn() *dag.DagNode {
