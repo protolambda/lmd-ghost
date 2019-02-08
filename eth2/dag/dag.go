@@ -75,7 +75,7 @@ func (dag *BeaconDag) SyncChanges() {
 	for k, v := range dag.agor.LatestAggregates {
 		if v.PrevWeight != v.Weight {
 			// get delta
-			delta := v.Weight - v.PrevWeight
+			delta := int64(v.Weight) - int64(v.PrevWeight)
 			// resolve difference in weight
 			v.PrevWeight = v.Weight
 			// remember the change, append it to our "to do" list of changes

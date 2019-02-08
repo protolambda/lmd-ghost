@@ -110,7 +110,10 @@ func (s *Simulation) SimNewBlock() {
 		panic("Could not insert simulated new block")
 	}
 
-	weight := s.Config.BaseAttestWeight + uint64(s.RNG.Intn(int(s.Config.MaxExtraAttestWeight)))
+	weight := s.Config.BaseAttestWeight
+	if s.Config.MaxExtraAttestWeight != 0 {
+		weight += uint64(s.RNG.Intn(int(s.Config.MaxExtraAttestWeight)))
+	}
 
 	// make the proposer attest its own block
 	at := &attestation.Attestation{BeaconBlockRoot: bl.Hash, Attester: bl.Proposer, Weight: uint64(weight)}
@@ -126,7 +129,10 @@ func (s *Simulation) SimNewAttestation() {
 	// select a random validator (every validator is allowed to attest here)
 	attester := common.ValidatorID(s.RNG.Intn(int(s.Config.ValidatorCount)))
 
-	weight := s.Config.BaseAttestWeight + uint64(s.RNG.Intn(int(s.Config.MaxExtraAttestWeight)))
+	weight := s.Config.BaseAttestWeight
+	if s.Config.MaxExtraAttestWeight != 0 {
+		weight += uint64(s.RNG.Intn(int(s.Config.MaxExtraAttestWeight)))
+	}
 
 	// make the attestation happen
 	at := &attestation.Attestation{BeaconBlockRoot: target.Key, Attester: attester, Weight: uint64(weight)}

@@ -10,30 +10,41 @@ type SlotLookupFn func(blockHash common.Hash256) uint64
 type AggregatedAttestation struct {
 
 	Target common.Hash256
-	Weight int64
+	Weight uint64
 	// Remember previous weight, if prev != current, then there was a change,
 	// only the dag can make an update, and set prev to current. Effectively like a "dirty" flag.
-	PrevWeight int64
+	PrevWeight uint64
 
 	// TODO: could contain a list signatures or something.
 }
 
 func NewAggregatedAttestation(target common.Hash256) *AggregatedAttestation {
-	res := new(AggregatedAttestation)
-	res.Target = target
+	res := &AggregatedAttestation{
+		Target: target,
+		Weight: 0,
+		PrevWeight: 0,
+	}
 	return res
+}
+
+
+func (at *AggregatedAttestation) UpdateAttestation(atIn *attestation.Attestation, atOut *attestation.Attestation) {
+	// TODO: does signer list need to be updated, if only the weight changed?
+
+	at.Weight += atIn.Weight
+	at.Weight -= atOut.Weight
 }
 
 func (at *AggregatedAttestation) RemoveAttestation(atOut *attestation.Attestation) {
 	// TODO: remove attester from signers list
 
-	at.Weight -= int64(atOut.Weight)
+	at.Weight -= atOut.Weight
 }
 
 func (at *AggregatedAttestation) AddAttestation(atIn *attestation.Attestation) {
 	// TODO: add attester to signers list
 
-	at.Weight += int64(atIn.Weight)
+	at.Weight += atIn.Weight
 }
 
 type AttestationsAggregator struct {
@@ -75,24 +86,24 @@ func (agor *AttestationsAggregator) AttestationIn(atIn *attestation.Attestation)
 			return
 		}
 
-		// if the target changed, we move it to another aggregate
-		if prevContrib.BeaconBlockRoot != atIn.BeaconBlockRoot {
+		// add to new aggregate, create aggregate if it does not exist yet
+		newAg := agor.createAgIfNonExists(atIn.BeaconBlockRoot)
 
-			// remove from old aggregate
-			prevAg.RemoveAttestation(atIn)
+		// if the target changed, we move the attestation
+		if prevAg != newAg {
 
-			// add to new aggregate, create aggregate if it does not exist yet
-			newAg := agor.createAgIfNonExists(atIn.BeaconBlockRoot)
+			// remove old attestation from old aggregate
+			prevAg.RemoveAttestation(prevContrib)
+			// add new attestation to new aggregate
 			newAg.AddAttestation(atIn)
 
 			// update target
 			agor.LatestTargets[atIn.Attester] = atIn
 			return
 		} else if atIn.Weight != prevContrib.Weight {
-			// if only just the weight changed, we update just the weight + latest target
+			// if only just the weight changed, we just update.
 
-			// add the change in our contribution to the bigger total
-			prevAg.Weight += int64(atIn.Weight) - int64(prevContrib.Weight)
+			prevAg.UpdateAttestation(atIn, prevContrib)
 
 			// update target
 			agor.LatestTargets[atIn.Attester] = atIn
