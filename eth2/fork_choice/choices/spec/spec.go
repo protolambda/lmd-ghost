@@ -22,9 +22,8 @@ func NewSpecLMDGhost(d *dag.BeaconDag) dag.ForkChoice {
 
 func (gh *SpecLMDGhost) ApplyScoreChanges(changes []dag.ScoreChange) {
 	for _, v := range changes {
-		gh.latestScores[v.Target] += v.ScoreDelta
-		if gh.latestScores[v.Target] < 0 {
-			panic("wtf")
+		if v.Target.Slot >= gh.dag.Finalized.Slot {
+			gh.latestScores[v.Target] += v.ScoreDelta
 		}
 	}
 	// delete targets that have a 0 score
@@ -41,7 +40,12 @@ func (gh *SpecLMDGhost) OnNewNode(node *dag.DagNode) {
 }
 
 func (gh *SpecLMDGhost) OnPrune() {
-	// nothing to do when dag is pruned
+	// prune old latest_scores
+	for k := range gh.latestScores {
+		if k.Slot < gh.dag.Finalized.Slot {
+			delete(gh.latestScores, k)
+		}
+	}
 }
 
 /// Retrieves the head by *recursively* looking for the highest voted block

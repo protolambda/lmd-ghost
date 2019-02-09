@@ -5,7 +5,7 @@ import (
 	"lmd-ghost/eth2/common"
 )
 
-type SlotLookupFn func(blockHash common.Hash256) uint64
+type SlotLookupFn func(blockHash common.Hash256) (uint64, bool)
 
 type AggregatedAttestation struct {
 
@@ -81,7 +81,9 @@ func (agor *AttestationsAggregator) AttestationIn(atIn *attestation.Attestation)
 	if hasPrevContrib {
 
 		prevAg := agor.LatestAggregates[prevContrib.BeaconBlockRoot]
-		if agor.SlotLookup(prevContrib.BeaconBlockRoot) > agor.SlotLookup(atIn.BeaconBlockRoot) {
+		prevSlot, prevOk := agor.SlotLookup(prevContrib.BeaconBlockRoot)
+		newSlot, newOk := agor.SlotLookup(atIn.BeaconBlockRoot)
+		if !prevOk || !newOk || prevSlot > newSlot {
 			// We're going to ignore it. Too old, it's not later.
 			return
 		}

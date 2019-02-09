@@ -9,16 +9,16 @@ import (
 
 func main()  {
 	config := &sim.SimConfig{
-		ValidatorCount: 400,
-		LatencyFactor: 0.4,
-		SlotSkipChance: 0,
-		BaseAttestWeight: 100000,
-		MaxExtraAttestWeight: 10000,
-		Blocks: 1000,
-		AttestationsPerBlock: 100,
-		JustifyEpochsAgo: 10,
-		FinalizeEpochsAgo: 14,
-		ForkChoiceRule: "stateful",
+		ValidatorCount: 40000,
+		LatencyFactor: 0.8,
+		SlotSkipChance: 0.3,
+		BaseAttestWeight: 100,
+		MaxExtraAttestWeight: 10,
+		Blocks: 10000,
+		AttestationsPerBlock: 1000,
+		JustifyEpochsAgo: 7,
+		FinalizeEpochsAgo: 10,
+		ForkChoiceRule: "simple_back_prop",
 	}
 
 	s := sim.NewSimulation(config)

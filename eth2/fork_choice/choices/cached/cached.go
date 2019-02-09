@@ -89,7 +89,9 @@ func (gh *CachedLMDGhost) getAncestor(block *dag.DagNode, height uint64) *dag.Da
 
 func (gh *CachedLMDGhost) ApplyScoreChanges(changes []dag.ScoreChange) {
 	for _, v := range changes {
-		gh.latestScores[v.Target] += v.ScoreDelta
+		if v.Target.Slot >= gh.dag.Finalized.Slot {
+			gh.latestScores[v.Target] += v.ScoreDelta
+		}
 	}
 	// delete targets that have a 0 score
 	for k, v := range gh.latestScores {
@@ -114,6 +116,12 @@ func (gh *CachedLMDGhost) OnNewNode(block *dag.DagNode) {
 
 func (gh *CachedLMDGhost) OnPrune() {
 	minSlot := gh.dag.Finalized.Slot
+	// prune old latest_scores
+	for k := range gh.latestScores {
+		if k.Slot < minSlot {
+			delete(gh.latestScores, k)
+		}
+	}
 	// prune cache (based on slot), and re-init ancestor data for non-pruned data
 	for k, v := range gh.cache {
 		if v.Slot < minSlot {

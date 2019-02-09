@@ -26,7 +26,9 @@ func NewSimpleBackPropLMDGhost(d *dag.BeaconDag) dag.ForkChoice {
 
 func (gh *SimpleBackPropLMDGhost) ApplyScoreChanges(changes []dag.ScoreChange) {
 	for _, v := range changes {
-		gh.latestScores[v.Target] += v.ScoreDelta
+		if v.Target.Slot >= gh.dag.Finalized.Slot {
+			gh.latestScores[v.Target] += v.ScoreDelta
+		}
 	}
 	// delete targets that have a 0 score
 	for k, v := range gh.latestScores {
@@ -45,7 +47,12 @@ func (gh *SimpleBackPropLMDGhost) OnNewNode(block *dag.DagNode) {
 }
 
 func (gh *SimpleBackPropLMDGhost) OnPrune() {
-	// nothing to do when dag is pruned
+	// prune old latest_scores
+	for k := range gh.latestScores {
+		if k.Slot < gh.dag.Finalized.Slot {
+			delete(gh.latestScores, k)
+		}
+	}
 }
 
 type ChildScore struct {
@@ -64,8 +71,11 @@ func (gh *SimpleBackPropLMDGhost) HeadFn() *dag.DagNode {
 	cutOff := int64(0)
 	// put all initial weights in the "DAG" (or tree, if non-justified roots would be removed)
 	for t, w := range gh.latestScores {
-		weightedBlocksAtHeight[t.Slot - start.Slot][t] = weightedBlocksAtHeight[t.Slot - start.Slot][t] + w
-		cutOff += w
+		// don't include attestations for justified blocks (i.e. before/on starting point)
+		if t.Slot > start.Slot {
+			weightedBlocksAtHeight[t.Slot-start.Slot][t] = weightedBlocksAtHeight[t.Slot-start.Slot][t] + w
+			cutOff += w
+		}
 	}
 	cutOff /= 2
 	bestChildMapping := make(map[*dag.DagNode]ChildScore)

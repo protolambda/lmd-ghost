@@ -32,8 +32,12 @@ func NewBeaconDag(initForkChoice InitForkChoice) *BeaconDag {
 		Nodes: make(map[common.Hash256]*DagNode),
 	}
 	res.ForkChoice = initForkChoice(res)
-	res.agor = attestations.NewAttestationsAggregator(func(blockHash common.Hash256) uint64 {
-		return res.Nodes[blockHash].Slot
+	res.agor = attestations.NewAttestationsAggregator(func(blockHash common.Hash256) (uint64, bool) {
+		n, ok := res.Nodes[blockHash]
+		if !ok {
+			return 0, false
+		}
+		return n.Slot, ok
 	})
 	return res
 }
