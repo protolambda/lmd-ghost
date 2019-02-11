@@ -205,7 +205,7 @@ func (gh *VitaliksOptimizedLMDGhost) HeadFn() *dag.DagNode {
 		// But not the very end, as this will likely not have a majority vote.
 		step := gh.getPowerOf2Below(gh.maxKnownHeight - head.Height) / 2
 		for step > 0 {
-			possibleClearWinner := gh.getClearWinner(latestVotes, (head.Height + gh.maxKnownHeight)/2)
+			possibleClearWinner := gh.getClearWinner(latestVotes, (head.Height - (head.Height % step) + step)
 			if possibleClearWinner != nil {
 				head = possibleClearWinner
 				break
