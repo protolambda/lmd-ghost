@@ -66,49 +66,20 @@ func NewStatefulLMDGhost(d *dag.BeaconDag) dag.ForkChoice {
 }
 
 func (gh *StatefulLMDGhost) ApplyScoreChanges(changes []dag.ScoreChange) {
-
-	children := make([]*dag.DagNode, len(changes))
-	// can be negative (i.e. attestation switch adjustment)
-	lowestDelta := int64(1 << 63 - 1)
-	nettoScoreChange := int64(0)
-	for i, v := range changes {
-		children[i] = v.Target
-		if v.ScoreDelta < lowestDelta {
-			lowestDelta = v.ScoreDelta
-		}
-		nettoScoreChange += v.ScoreDelta
-	}
-	// cutOff = (old total weight + netto change) / 2
-	// cutOff2 = old total weight + netto change   (i.e., cutoff x 2)
-	// weight of start point before changes = total old weight
-	cutOff2 := gh.dag.Finalized.Weight + nettoScoreChange
-
 	// TODO: implement dissolving between changes.
+	// TODO: maybe implement cut-off for propagation, i.e. just propagate weight changes,
+	//  no need to check for new best-target after cut-off.
 
-	// back-propagation cut-off strategy:
-	// If n has sufficient weight to not lose its position on the canonical chain (i.e. n.Weight + v.Score > totalWeight / 2 + possible change)
-	// Then the target will stay the same during this ApplyScoreChanges. Just propagate the weight adjustment.
+	// back-propagation
 	for _, v := range changes {
 		n := v.Target
 		// Propagate down the tree
 		for n != nil {
 			n.Weight += v.ScoreDelta
-			// less possible change = better cutoff!
-			cutOff2 -= v.ScoreDelta
 			if v.ScoreDelta < 0 {
 				onRemoveWeight(n)
 			} else {
 				onAddWeight(n)
-			}
-			if (n.Weight << 1) > cutOff2 {
-				target := n.BestTarget
-				n = n.Parent
-				for n != nil {
-					n.BestTarget = target
-					n.Weight += v.ScoreDelta
-					n = n.Parent
-				}
-				break
 			}
 			n = n.Parent
 		}
