@@ -140,24 +140,6 @@ To achieve `O(1)` during the "computation" of the head, insertions have to be pr
 Computation:
 - Insertions of score changes are propagated back towards the root of the DAG. Batching/aggregation helps a lot here to reduce workload.
 - Insertions of blocks trigger a propagation of the best-target.
- This cuts off as soon as a node in the path towards the root node is not the best child of its parent node.
-
-#### Optimizations
-
-The primary operation cost in the DAG is to check if a child node becomes the best child node, or the opposite (if the best child node is not the best anymore).
-Although these operations themselves are optimized with quick swapping / timely checks, it is good to avoid.
-By checking for a majority weight (i.e. `node Weight + change in Score > total dag Weight / 2 + possible change`) during back-propagation of weight changes,
- we can determine that the best-target will not change anymore during further propagation, and only the weight adjustment needs to be propagated further.
-
-Often, an attestation moves up one or more blocks on the same branch, and may not change in weight.
-This can be quickly recognized, as the best-target would not be different between the two attested nodes.
-In such situation, it is easy to only apply a partial back-propagation, up to the point where both can be combined.
-If the combined weight cancels out, further back-propagation can be avoided. But the combination can already be regarded as a win.
-
-More advanced dissolving (i.e. combine two changes into none) optimizations from the previous version of this algorithm could not be ported, due to the aggregation going on,
- and weighting generally making dissolving less likely. However, one could still try to optimize for combining two changes at two different targets,
-  into one change once the back-propagation of these targets hits the fork between the two.
-
 
 ### Sum-vote DAG with propagation cut-off
 
