@@ -8,6 +8,7 @@ import (
 	"lmd-ghost/eth2/common/constants"
 	"lmd-ghost/eth2/dag"
 	"lmd-ghost/eth2/fork_choice/choices/cached"
+	"lmd-ghost/eth2/fork_choice/choices/proto_array"
 	"lmd-ghost/eth2/fork_choice/choices/simple_back_prop"
 	"lmd-ghost/eth2/fork_choice/choices/spec"
 	"lmd-ghost/eth2/fork_choice/choices/stateful"
@@ -24,6 +25,7 @@ var forkRules = map[string]dag.InitForkChoice {
 	"cached": cached.NewCachedLMDGhost,
 	"simple_back_prop": simple_back_prop.NewSimpleBackPropLMDGhost,
 	"stateful": stateful.NewStatefulLMDGhost,
+	"proto_array": proto_array.NewProtoArrayLMDGhost,
 }
 
 

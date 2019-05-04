@@ -18,7 +18,7 @@ func main()  {
 		AttestationsPerBlock: 1000,
 		JustifyEpochsAgo: 7,
 		FinalizeEpochsAgo: 10,
-		ForkChoiceRule: "simple_back_prop",
+		ForkChoiceRule: "proto_array",
 	}
 
 	s := sim.NewSimulation(config)
