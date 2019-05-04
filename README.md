@@ -191,6 +191,60 @@ Either die hard and keep building your own chain (change in attestations dissolv
  or stay as close as possible to the head (change in attestation dissolved reasonably quick).
 
 
+### Array-based stateful DAG `proto_array`
+
+This is an array-based tree/DAG, similar to the stateful implementation, both by @protolambda.
+However, the state is easily maintained, changes can be "dissolved to 0" efficiently, and it requires less memory.
+
+The core principle is insertion order: new nodes are appended, and no node is inserted before its parent node.
+These properties can be combined into a "time-sequence" guarantee: if `i_x < i_y` then `x` is an ancestor from `y`, or has a common ancestor as `y`, but never has `y` as ancestor.
+
+This makes:
+- pruning efficient: just remove `0 ... i_finalized`.
+- back-propagation easy: just range `len-1 --> 0` to work from newest to oldest. Works for best-child-node as well as best-target-node relations.
+- dissolving easy: just combine diff values from newest to oldest: `O(n)` to fully try to dissolve an arbitrary set of changes.
+
+#### Benefits
+
+- This maintains a full state, and can return the head for a given state in `O(1)`, as well as for *any* node in the graph (similar to the stateful implementation). 
+- This maintains the state in an efficient manner: the DAG is represented just with a few arrays of integers.
+- This can replace a pointer based DAG, good for memory usage. (if you don't need to maintain a list of pointers to child nodes for each node in the graph)
+- It is fast thanks to dissolving of multiple changes, and low memory usage.
+
+#### Variations & Trade-offs
+
+**Less eager pruning**: you can trigger pruning based on exact memory. A simple pruning trigger would be: 
+`indices[gh.dag.Finalized] > X`, with `X` being the amount of nodes you want to keep around, and `indices` being the mapping from node to index. 
+Everything before `X` is considered guaranteed garbage.
+
+**cheap pruning vs. cheap computation**: instead of updating all the indices after pruning away the start of the arrays, 
+you could also maintain an `offset` state field, to keep track of the adjustment to make to each index before using it as an array lookup.
+This makes pruning super cheap (just replace state arrays with a `[new_start:]` slice), but is more costly on computation:
+ `i - offset` every time you make a lookup in an array. However, far less writes to storage could be a considerable win, e.g. in a smart-contract.
+
+**ad-hoc target lookups**: instead of propagating the best-target during the weights update, 
+one could also decide against the `O(1)` head-lookup for every node, and do a cheap but not `O(1)` lookup whenever necessary:
+
+```
+i = starting_index
+for {
+  bi = best_child[i]
+  // reached target?
+  if i == bi {
+    break
+  }
+  i = bi
+}
+// i is index of head node now.
+```
+This wins you some memory and computation, but makes head computation more costly.
+It is useful if you are not interested in knowing the chain head all the time.
+
+**cut-offs**: the "time" guarantee in the ordering of nodes is nice, but not as strong as height-based layering: 
+it does not enable you to efficiently sum the total weight at a given height (which would enable cut-offs).
+This algorithm still outperforms it in most reasonable scenarios, as dissolving changes is also helpful.
+
+
 ### Your algorithm?
 
 Suggestions are welcome! Please submit an issue or a PR.
