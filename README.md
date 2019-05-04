@@ -210,6 +210,7 @@ This makes:
 - This maintains the state in an efficient manner: the DAG is represented just with a few arrays of integers.
 - This can replace a pointer based DAG, good for memory usage. (if you don't need to maintain a list of pointers to child nodes for each node in the graph)
 - It is fast thanks to dissolving of multiple changes, and low memory usage.
+- Note that the `O(1)` head computation also means that starting from the finalized block is just as good as starting from the justified block. 
 
 #### Variations & Trade-offs
 
