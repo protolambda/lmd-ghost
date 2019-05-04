@@ -118,6 +118,9 @@ func (gh *VitaliksOptimizedLMDGhost) getAncestor(block *dag.DagNode, height uint
 	// skip ahead logarithmically to find the ancestor, and dive in recursively
 	skipBlock := gh.ancestors[logz[block.Height - height - 1]][block]
 	o := gh.getAncestor(skipBlock, height)
+	if o == nil {
+		return nil
+	}
 
 	if o.Height != height {
 		panic("Found ancestor is at wrong height")
@@ -170,14 +173,19 @@ func (gh *VitaliksOptimizedLMDGhost) OnPrune() {
 			delete(gh.cache, k)
 		}
 	}
+	// TODO: pruning ancestor data is a logistic nightmare.
 	// prune away old ancestor data
-	for _, ancMap := range gh.ancestors {
-		for k, v := range ancMap {
-			if v.Slot < minSlot {
-				delete(ancMap, k)
-			}
-		}
-	}
+	//for _, ancMap := range gh.ancestors {
+	//	for k, v := range ancMap {
+	//		if v == nil {
+	//			if k.Slot < minSlot {
+	//				delete(ancMap, k)
+	//			}
+	//		} else if v.Slot < minSlot {
+	//			delete(ancMap, k)
+	//		}
+	//	}
+	//}
 	// now update all ancestor data.
 	for _, v := range gh.dag.Nodes {
 		gh.OnNewNode(v)
@@ -205,7 +213,7 @@ func (gh *VitaliksOptimizedLMDGhost) HeadFn() *dag.DagNode {
 		// But not the very end, as this will likely not have a majority vote.
 		step := gh.getPowerOf2Below(gh.maxKnownHeight - head.Height) / 2
 		for step > 0 {
-			possibleClearWinner := gh.getClearWinner(latestVotes, (head.Height - (head.Height % step) + step)
+			possibleClearWinner := gh.getClearWinner(latestVotes, head.Height - (head.Height % step) + step)
 			if possibleClearWinner != nil {
 				head = possibleClearWinner
 				break
